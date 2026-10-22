@@ -14,7 +14,7 @@ const { AbiCoder, keccak256 } = require("ethers");
 const FIELD =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const ZERO_VALUE =
-  8902741811979956579364953694938829634548534456828480688979151052822285834256n;
+  17003957365552116588566697242255183877916613397757664392656876041027752888120n;
 const LEVELS = 20;
 
 const BUILD = path.join(__dirname, "..", "build");
@@ -61,9 +61,10 @@ async function main() {
   const fee = 0n;
   const recipient = "0x0000000000000000000000000000000000000000";
   const relayer = "0x0000000000000000000000000000000000000000";
+  // == Solidity abi.encode(ExtData struct): dynamic tuple, not a flat list
   const encoded = AbiCoder.defaultAbiCoder().encode(
-    ["address", "int256", "address", "uint256", "bytes", "bytes"],
-    [recipient, extAmount, relayer, fee, "0x", "0x"]
+    ["tuple(address,int256,address,uint256,bytes,bytes)"],
+    [[recipient, extAmount, relayer, fee, "0x", "0x"]]
   );
   const edHash = BigInt(keccak256(encoded)) % FIELD;
 

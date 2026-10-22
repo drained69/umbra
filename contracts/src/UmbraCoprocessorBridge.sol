@@ -4,42 +4,48 @@ pragma solidity ^0.8.24;
 import {IVerifier} from "./interfaces/IVerifier.sol";
 
 /// @title UmbraCoprocessorBridge
-/// @notice THE headline Portaldot-only component: an IVerifier whose pairing check is
-///         executed in the ink!/WASM contract `umbra_coprocessor`, not in the EVM.
+/// @notice An IVerifier whose Groth16 pairing check is executed by the ink!/WASM contract
+///         `umbra_coprocessor` (Portaldot V3's second VM) instead of the EVM.
 ///
-/// @dev Why this exists: a Groth16 pairing check is ~hundreds of thousands of gas on an
-///      EVM-only chain. Portaldot V3 runs a second VM (pallet-contracts / WASM) on the
-///      SAME chain. We move the verify there (arkworks bn254, no EVM gas-loop ceiling)
-///      and have the EVM asset layer call it. The pool is handed THIS contract as its
-///      `verifier`, so neither the pool nor the user can tell the difference —
-///      except in cost. That is the "right VM for the right job" story, made literal.
+/// @dev Two wiring modes (see docs/CROSS_VM.md); the pool interface is identical:
+///        1. Direct: `coprocessor` is an EVM-reachable precompile / chain-extension shim
+///           that forwards to pallet-contracts. The bridge staticcalls it.
+///        2. Attested (testnet): a designated `attestor` runs the WASM verification and
+///           records the result here via `attest(proofHash)`.
 ///
-///      Two wiring options on V3 depending on what the runtime exposes:
-///        1. A precompile / chain-extension address that the EVM can `staticcall`
-///           to reach pallet-contracts. Set `coprocessor` to that address.
-///        2. If direct cross-VM calls are unavailable on testnet, a trusted relayer
-///           account calls the WASM contract, gets the boolean, and this bridge reads
-///           the cached result keyed by the proof hash (set `attestor`).
-///      Both paths are documented in docs/CROSS_VM.md; the pool interface is unchanged.
+///      SECURITY (audit M-01): attestations are domain-separated. A proof hash binds
+///      chainid + this bridge's address + the exact proof and public signals, so an
+///      attestation can't be replayed on another bridge (e.g. the other circuit's bridge),
+///      another chain, or for different public inputs. Deploy ONE bridge per circuit.
 contract UmbraCoprocessorBridge is IVerifier {
-    /// Address reachable from the EVM that forwards to the WASM coprocessor (precompile
-    /// or chain-extension shim). address(0) => fall back to the attestation cache.
     address public immutable coprocessor;
-
-    /// Optional trusted attestor that mirrors WASM verify results on-chain when direct
-    /// cross-VM calls are not yet available on testnet.
     address public immutable attestor;
 
     mapping(bytes32 => bool) public attested;
 
-    event Verified(bytes32 indexed proofHash, bool result, bool viaCoprocessor);
     event Attested(bytes32 indexed proofHash);
 
     error NotAttestor();
+    error CoprocessorHasNoCode();
 
     constructor(address _coprocessor, address _attestor) {
+        if (_coprocessor != address(0) && _coprocessor.code.length == 0 && _coprocessor > address(0xffff)) {
+            // Non-precompile addresses must be real contracts; precompile-range addresses
+            // (<= 0xffff) are allowed since runtime shims may not report code.
+            revert CoprocessorHasNoCode();
+        }
         coprocessor = _coprocessor;
         attestor = _attestor;
+    }
+
+    /// @notice Canonical, domain-separated hash of a proof. The attestor MUST use this.
+    function proofHashOf(
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[] calldata publicSignals
+    ) public view returns (bytes32) {
+        return keccak256(abi.encode(block.chainid, address(this), a, b, c, publicSignals));
     }
 
     /// @notice Attestor path: mirror a WASM-verified proof result on-chain.
@@ -55,18 +61,14 @@ contract UmbraCoprocessorBridge is IVerifier {
         uint256[2] calldata c,
         uint256[] calldata publicSignals
     ) external view returns (bool) {
-        bytes32 proofHash = keccak256(abi.encode(a, b, c, publicSignals));
-
         if (coprocessor != address(0)) {
-            // Direct cross-VM path: staticcall the precompile/chain-extension that
-            // forwards to the WASM coprocessor. ABI: verifyProof(bytes) -> bool.
+            // Direct cross-VM path. ABI: verifyProof(uint256[2],uint256[2][2],uint256[2],uint256[]) -> bool
             (bool ok, bytes memory out) =
-                coprocessor.staticcall(abi.encodeWithSignature("verifyProof(bytes)", abi.encode(a, b, c, publicSignals)));
+                coprocessor.staticcall(abi.encodeCall(IVerifier.verifyProof, (a, b, c, publicSignals)));
             if (ok && out.length == 32) {
                 return abi.decode(out, (bool));
             }
         }
-        // Attestation fallback (testnet): result mirrored by the WASM relayer.
-        return attested[proofHash];
+        return attested[proofHashOf(a, b, c, publicSignals)];
     }
 }

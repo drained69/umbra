@@ -16,7 +16,7 @@ abstract contract MerkleTreeWithHistory {
 
     /// "Nothing-up-my-sleeve" zero leaf = keccak256("umbra.v3.zero") % FIELD_SIZE.
     uint256 public constant ZERO_VALUE =
-        8902741811979956579364953694938829634548534456828480688979151052822285834256;
+        17003957365552116588566697242255183877916613397757664392656876041027752888120;
 
     uint32 public immutable levels;
     IHasher public immutable hasher;

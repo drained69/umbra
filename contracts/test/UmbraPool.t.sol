@@ -16,7 +16,7 @@ contract UmbraPoolTest is Test {
     MockHasher hasher;
     MockVerifier verifier;
 
-    uint256 constant DENOM = 10 ether; // stand-in for 10 tPOT (14-decimals handled off-chain)
+    uint256 constant DENOM = 10 ether; // 10 tPOT: EVM layer uses 18-decimal units
     uint32 constant LEVELS = 20;
 
     // dummy Groth16 points; MockVerifier ignores them

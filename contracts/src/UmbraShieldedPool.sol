@@ -35,6 +35,7 @@ contract UmbraShieldedPool is MerkleTreeWithHistoryPair {
         uint256[2] outputCommitments;
     }
 
+    /// @dev Amounts are 18-decimal EVM wei (pallet-revive scales native 14-dec POT by 10^4).
     struct ExtData {
         address recipient;
         int256 extAmount; // >0 deposit, <0 withdraw, 0 internal transfer
@@ -58,6 +59,8 @@ contract UmbraShieldedPool is MerkleTreeWithHistoryPair {
     error FeeTooLarge();
     error ExtAmountOutOfRange();
     error PaymentFailed();
+    error InvalidRecipient();
+    error InvalidRelayer();
 
     modifier nonReentrant() {
         if (_locked != 1) revert AlreadyLocked();
@@ -97,6 +100,9 @@ contract UmbraShieldedPool is MerkleTreeWithHistoryPair {
         if (calculatePublicAmount(extData.extAmount, extData.fee) != args.publicAmount) {
             revert PublicAmountMismatch();
         }
+        // never burn funds by paying out to the zero address
+        if (extData.extAmount < 0 && extData.recipient == address(0)) revert InvalidRecipient();
+        if (extData.fee > 0 && extData.relayer == address(0)) revert InvalidRelayer();
 
         uint256[] memory pub = new uint256[](7);
         pub[0] = args.root;

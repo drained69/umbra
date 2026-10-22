@@ -7,6 +7,8 @@ import {IVerifier} from "./interfaces/IVerifier.sol";
 
 /// @title UmbraPool
 /// @notice A single fixed-denomination shielded pool for native tPOT on Portaldot V3.
+///         Units: the EVM layer (pallet-revive) exposes native value scaled to 18 decimals
+///         (native POT has 14; ratio 10^4), so `denomination` is in 18-decimal EVM wei.
 ///         Deposits add a note commitment to the Merkle tree. Withdrawals prove, in
 ///         zero knowledge, membership of an unspent note WITHOUT revealing which one —
 ///         breaking the on-chain link between deposit and withdrawal.
@@ -96,7 +98,7 @@ contract UmbraPool is MerkleTreeWithHistory {
         address payable relayer,
         uint256 fee,
         uint256 refund
-    ) external payable nonReentrant {
+    ) external nonReentrant {
         if (fee > denomination) revert FeeExceedsDenomination();
         if (refund != 0) revert RefundNotSupported(); // native-token pool: no separate refund leg
         if (nullifierHashUsed[nullifierHash]) revert NoteAlreadySpent();
