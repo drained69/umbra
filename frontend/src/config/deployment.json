@@ -1,0 +1,16 @@
+{
+  "network": "portaldot-v3-testnet",
+  "chainId": 420420777,
+  "rpc": "https://test-evm-rpc-v3.portaldot.dev",
+  "decimals": 14,
+  "verifierMode": "onchain",
+  "treeLevels": 20,
+  "relayerFeeBps": 50,
+  "contracts": {
+    "poseidon": "0x0000000000000000000000000000000000000000",
+    "verifier": "0x0000000000000000000000000000000000000000",
+    "factory": "0x0000000000000000000000000000000000000000",
+    "pools": {}
+  },
+  "note": "Placeholder — overwritten by scripts/deploy.js after a real testnet deploy."
+}

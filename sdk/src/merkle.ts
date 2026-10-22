@@ -1,5 +1,5 @@
 import { poseidon2 } from "poseidon-lite";
-import { FIELD_SIZE, ZERO_VALUE, TREE_LEVELS } from "./field.js";
+import { FIELD_SIZE, ZERO_VALUE, TREE_LEVELS } from "./field";
 
 /**
  * Off-chain mirror of the on-chain incremental Merkle tree. Built from the ordered

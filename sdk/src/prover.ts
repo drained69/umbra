@@ -5,8 +5,8 @@
 
 // @ts-ignore - snarkjs ships no types
 import * as snarkjs from "snarkjs";
-import { Note, nullifierHash } from "./note.js";
-import type { MerklePath } from "./merkle.js";
+import { Note, nullifierHash } from "./note";
+import type { MerklePath } from "./merkle";
 
 export interface WithdrawInputs {
   note: Note;

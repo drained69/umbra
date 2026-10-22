@@ -1,0 +1,15 @@
+{
+  "name": "umbra-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Deploy + ops scripts for Umbra on Portaldot V3 testnet",
+  "scripts": {
+    "deploy": "node deploy.js"
+  },
+  "dependencies": {
+    "circomlibjs": "0.1.7",
+    "dotenv": "16.4.5",
+    "ethers": "6.13.2"
+  }
+}

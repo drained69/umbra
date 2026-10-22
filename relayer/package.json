@@ -1,0 +1,21 @@
+{
+  "name": "umbra-relayer",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Gasless withdrawal relayer for Umbra on Portaldot V3 (+ optional cross-VM attestation)",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "2.8.5",
+    "dotenv": "16.4.5",
+    "ethers": "6.13.2",
+    "express": "4.21.0",
+    "snarkjs": "0.7.6"
+  },
+  "optionalDependencies": {
+    "@polkadot/api": "12.4.2",
+    "@polkadot/api-contract": "12.4.2"
+  }
+}

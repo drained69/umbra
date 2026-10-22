@@ -1,5 +1,5 @@
 import { poseidon2 } from "poseidon-lite";
-import { FIELD_SIZE, randomFieldElement } from "./field.js";
+import { FIELD_SIZE, randomFieldElement } from "./field";
 
 /**
  * An Umbra note = the secret opening of a commitment that sits in a pool's Merkle tree.
