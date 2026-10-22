@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "circomlib": "2.0.5",
+    "ethers": "^6.13.2",
     "poseidon-lite": "^0.3.0"
   },
   "devDependencies": {

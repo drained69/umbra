@@ -24,7 +24,7 @@ const LEVELS = 20;
 const BUILD = path.join(__dirname, "..", "build");
 const WASM = path.join(BUILD, "withdraw_js", "withdraw.wasm");
 const ZKEY = path.join(BUILD, "withdraw_final.zkey");
-const VKEY = JSON.parse(fs.readFileSync(path.join(BUILD, "verification_key.json")));
+const VKEY = JSON.parse(fs.readFileSync(path.join(BUILD, "withdraw_verification_key.json")));
 
 function rand() {
   const b = require("crypto").randomBytes(32);

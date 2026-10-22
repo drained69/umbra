@@ -3,6 +3,7 @@
 // (pass any ethers Provider/Signer).
 
 import { ethers } from "ethers";
+import { bytesToHex } from "@noble/hashes/utils";
 import { POOL_ABI } from "./abi";
 import { Note, commitment as noteCommitment, nullifierHash } from "./note";
 import { MerkleTree } from "./merkle";
@@ -36,7 +37,7 @@ export class UmbraPoolClient {
   async deposit(note: Note, encryptedMemo: Uint8Array = new Uint8Array()): Promise<string> {
     const denom = await this.denomination();
     const cmt = noteCommitment(note);
-    const memoHex = "0x" + Buffer.from(encryptedMemo).toString("hex");
+    const memoHex = "0x" + bytesToHex(encryptedMemo);
     const tx = await (this.contract as any).deposit(cmt, memoHex, { value: denom });
     const r = await tx.wait();
     return r.hash;

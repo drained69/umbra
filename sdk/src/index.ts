@@ -5,3 +5,6 @@ export * from "./prover";
 export * from "./viewingKey";
 export * from "./abi";
 export * from "./client";
+export * from "./keypair";
+export * from "./utxo";
+export * from "./transaction";
