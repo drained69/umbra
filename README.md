@@ -78,7 +78,8 @@ Full detail and the (non-fabricated) status: [`docs/MAINNET.md`](docs/MAINNET.md
 make install          # deps for every package (forge-std pinned, npm ci)
 make check            # contract tests + artifact pins + SDK typecheck + frontend build
 make e2e              # full system on a throwaway local chain
-cp .env.example .env  # add a testnet PRIVATE_KEY (fund it from the Portaldot faucet)
+cp .env.example .env  # add a testnet PRIVATE_KEY
+node scripts/evm-funding-address.js   # where to send your faucet tPOT (5... -> your 0x key)
 make deploy           # runs `make preflight`, then deploys everything to Portaldot V3
 make relayer          # start the gasless relayer
 make frontend         # open the dApp at http://localhost:5173
