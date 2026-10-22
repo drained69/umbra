@@ -16,38 +16,41 @@ Source: https://dorahacks.io/hackathon/portaldot-hacker-house-2026/detail
 - Key deadlines (UTC): check-in **Oct 24 12:00** · final submission / code freeze **Nov 6 04:00** · Demo Day Nov 8–9 · winners Nov 11
 - Rules notes: public repo with ≥3 commits during the event, no bulk commits in the final 24h, must deploy on Portaldot testnet, demo video ≤3 min showing Portaldot integration.
 
-## Chosen idea: PortalID — dual-VM identity middleware (Track 1: Modular Cloud & Middleware)
+## Chosen idea: Umbra — confidential tPOT payments with a WASM ZK coprocessor (Track: Ecosystem DApps + Modular Cloud & Middleware)
 
-One portable identity binding the native SS58 wallet (`5...`, polkadot-js) to the EVM address (`0x...`, MetaMask) on Portaldot V3 — one human-readable name + profile, resolvable by **both contract VMs**. Other DApps build on it via middleware.
+Private, unlinkable native-token payments on Portaldot V3. Shielded pool (Tornado/Aztec-style): deposit a fixed denomination behind a Poseidon commitment, withdraw with a zero-knowledge proof of Merkle membership that hides *which* note you spend. The headline differentiator: the expensive Groth16 pairing check runs in Portaldot's **WASM** VM (ink!/arkworks coprocessor) while assets live in the **EVM** VM — "the right VM for the right job," the answer to *why Portaldot*. Plus **viewing keys / selective disclosure**: privacy by default, auditable by choice (compliance-capable, not a black-box mixer).
 
-**Why this idea**: demoing *both* VMs interoperating is Portaldot V3's headline feature and most submissions will be EVM-only only. Strong Innovation score, "middleware other DApps build on" scores Ecosystem Contribution, and it's feasible solo in ~2 weeks.
+**Why this idea**: (1) structurally depends on the dual-VM → airtight "why Portaldot" for Innovation; (2) privacy is a category no other submission occupies; (3) ships as a reusable privacy primitive + ZK-coprocessor SDK → Ecosystem; (4) confidential payments + selective disclosure is the live frontier (Aztec, confidential stablecoins), relayer fee = revenue → Business.
 
-### Architecture
+**Status**: contracts + ZK + SDK + frontend + relayer + coprocessor all built; 13/13 Foundry tests pass incl. on-chain verification of a real Groth16 proof. See README.md and docs/.
 
-1. **Claim flow** — user signs a challenge with MetaMask *and* with polkadot-js extension. A lightweight indexer (Node/Express) verifies the sr25519 signature with `@polkadot/util-crypto` (sr25519 can't be verified inside the EVM).
-2. **Attestation** — indexer holds a dedicated issuer EOA; `IPassportIssuer` writes the `0x ↔ 5xx` binding into the Solidity registry `PortalIDRegistry.sol` (name, avatar, links, address bindings, events). Trust assumption (trusted issuer) disclosed in docs.
-3. **ink! twin** (`portaldot_id.rs`) — same binding mirrored onchain in WASM, called by the indexer's native account, so native DApps can read it directly. This is the dual-VM innovation proof.
-4. **Demo DApp "PortalPass"** — gated content only for verified identities + resolving a recipient's EVM address from an SS58 address (and vice versa).
-5. **SDK** — npm package `@portaldot/portalid` + a small `PortalIDReader.sol` library = the middleware/ecosystem story.
+### Architecture (built — see docs/ARCHITECTURE.md + docs/CROSS_VM.md)
+
+1. **EVM layer** — `UmbraPool.sol` (Poseidon Merkle tree + nullifier set + relayer), `UmbraPoolFactory` (1/10/100 tPOT pools), `IVerifier` (VM-agnostic).
+2. **ZK** — `circuits/withdraw.circom` (Poseidon Merkle membership + nullifier, params bound anti-tamper); trusted setup exports `WithdrawVerifier.sol` + proving artifacts.
+3. **WASM coprocessor** — `coprocessor/` ink! + arkworks bn254 Groth16 verifier; EVM reaches it via `UmbraCoprocessorBridge` (precompile path) or relayer attestation (testnet path). This is the dual-VM innovation proof.
+4. **SDK** — `sdk/` notes, Merkle paths, snarkjs prover, viewing keys + selective disclosure (shared by app + relayer).
+5. **Frontend** — deposit / private withdraw / auditor + the "what leaks" visualizer.
+6. **Relayer** — gasless withdrawals to fresh addresses + optional cross-VM attestation.
 
 ### Timeline (UTC deadlines)
 
-- **Oct 22–24 (check-in crunch)**: Hardhat scaffold + registry contract deployed on testnet; dual-wallet connect flow signing on both sides; README + architecture diagram. Check-in requires a *working prototype*, not a concept.
-- **Oct 26**: feedback results announced — adjust.
-- **Oct 27–29**: office hours application (Oct 27 deadline) — free mentor feedback.
-- **Oct 30–Nov 4**: iterate to polished version: PortalPass gated-content demo, ink! twin, SDK package.
-- **Nov 5**: demo video (≤3 min), pitch deck (problem, why Portaldot is essential, working proof, future plan), final submission docs.
-- **Nov 6 04:00**: code freeze. Keep commits spread over time (graded as feasibility evidence).
+- **Oct 22 (today)**: full stack built + 13/13 tests green → satisfies the Oct 24 *working prototype* check-in. Next: deploy to testnet (`make deploy`), record a ≤3-min demo per docs/DEMO.md.
+- **Oct 24 12:00**: check-in (working prototype) — ✅ ready.
+- **Oct 27**: office-hours application deadline — apply for mentor feedback.
+- **Oct 30–Nov 4**: polish; optional stretch = join-split arbitrary-value private transfer.
+- **Nov 5**: demo video + pitch deck (problem · why Portaldot is essential · working proof · roadmap).
+- **Nov 6 04:00**: code freeze. Commits already spread across the build (no final-24h bulk).
 
 ### Stack
 
-- Contracts: Solidity (Hardhat/Foundry) + one small ink! (Rust) contract
-- Frontend: React + wagmi (MetaMask) + `@polkadot/extension-dapp` (polkadot-js)
-- Indexer/issuer: Node/Express + `@polkadot/util-crypto` (sr25519 verify)
+- Contracts: Solidity (Foundry) + ink! (Rust/arkworks) WASM coprocessor
+- ZK: circom + snarkjs (Groth16, bn254), Poseidon
+- Frontend: React + Vite + ethers (MetaMask)
+- Relayer/scripts: Node + ethers (+ optional @polkadot/api for cross-VM)
 - Testnet: Portaldot V3 EVM RPC (chain 420420777); test POT from Discord admin DM
 
-### Backup ideas (if PortalID becomes infeasible)
+### Stretch / backup
 
-1. **POTWatch** (Track 3) — node monitor, staking APR calculator, Telegram/Discord alerts, rules-based auto-nominator bot. Likely under-contested track.
-2. **RWA invoice vault** (Track 4) — tokenize receivables into ERC-20 yield shares. Deepest prizes, most competition.
-3. **Cross-chain liquidity router** (Track 2) — biggest wow factor, highest build risk for a solo dev.
+- **Stretch**: join-split circuit → arbitrary-value private transfers between shielded users (Aztec-style), reusing the same engine.
+- **Backup framings of the same build**: pitch primarily as Ecosystem DApps, secondarily as Modular Cloud & Middleware (privacy layer + ZK-coprocessor SDK).
