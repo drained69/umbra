@@ -30,7 +30,7 @@ const FEE_BPS = BigInt(process.env.RELAYER_FEE_BPS || 50);
 const PORT = Number(process.env.RELAYER_PORT || 8787);
 
 const deployment = JSON.parse(readFileSync(join(ROOT, "deployments", "portaldot-v3.json"), "utf8"));
-const vkey = JSON.parse(readFileSync(join(ROOT, "circuits", "build", "verification_key.json"), "utf8"));
+const vkey = JSON.parse(readFileSync(join(ROOT, "circuits", "build", "withdraw_verification_key.json"), "utf8"));
 
 const POOL_ABI = [
   "function denomination() view returns (uint256)",

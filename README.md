@@ -42,16 +42,34 @@ This "right VM for the right job" split is the answer to the question every judg
 
 | Component | State |
 |---|---|
-| EVM pool state machine (Merkle, nullifiers, relayer, factory) | ✅ `forge test` — 11/11 |
-| ZK circuit + trusted setup + SDK note/merkle math | ✅ real proof generated & verified (JS) |
-| On-chain Groth16 verifier accepts real proof, rejects tampered | ✅ `forge test` — 2/2 |
+| Fixed-denom pool state machine (Merkle, nullifiers, relayer, factory) | ✅ `forge test` |
+| **Join-split engine** (arbitrary-value deposit/withdraw/transfer, 2-in/2-out) | ✅ `forge test` |
+| ZK circuits (withdraw + transaction) + trusted setup + SDK math | ✅ real proofs generated & verified (JS) |
+| On-chain Groth16 verifiers accept real proofs, reject tampered | ✅ `forge test` |
 | Frontend (deposit / withdraw / audit + visualizer) | ✅ `vite build` passes |
 | Gasless relayer | ✅ implemented (local proof precheck + submit) |
 | ink!/WASM coprocessor (dual-VM verify) | ✅ source + build; wired via bridge/attestor |
+| Multi-network deploy (testnet now; mainnet when EVM ships) | ✅ `scripts/` |
 
-**13/13 contract tests pass**, including on-chain verification of a genuinely generated
-Groth16 proof. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
-[`docs/CROSS_VM.md`](docs/CROSS_VM.md).
+**24/24 contract tests pass**, including on-chain verification of genuinely generated
+Groth16 proofs for **both** circuits. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+[`docs/CROSS_VM.md`](docs/CROSS_VM.md), [`docs/SCHEDULE.md`](docs/SCHEDULE.md).
+
+## Two shielded pools, one engine
+
+- **`UmbraPool`** — fixed-denomination (1/10/100 tPOT), simplest UX, biggest anonymity set
+  per denomination. The headline demo.
+- **`UmbraShieldedPool`** — **join-split (UTXO)**: one `transact` can deposit, withdraw, and
+  privately transfer arbitrary amounts between shielded owners at once. This is the shared
+  engine the DEX / voting / payroll variants build on (see Roadmap).
+
+## Networks & mainnet
+
+Deploys to **Portaldot V3 testnet** today (the hackathon target). **Portaldot mainnet has no
+EVM yet** (`eth_chainId` → method-not-found as of 2026-10-22), so these EVM contracts can't
+deploy there until an EVM is live. The deploy pipeline is multi-network and flips to mainnet
+with one env var once the EVM exists **and** a real trusted-setup ceremony + audit are done.
+Full detail and the (non-fabricated) status: [`docs/MAINNET.md`](docs/MAINNET.md).
 
 ## Quickstart
 

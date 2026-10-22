@@ -1,0 +1,20 @@
+{
+  "testnet": {
+    "name": "portaldot-v3-testnet",
+    "evmRpc": "https://test-evm-rpc-v3.portaldot.dev",
+    "chainId": 420420777,
+    "substrateWs": "wss://test-node-v3.portaldot.dev",
+    "decimals": 14,
+    "evmAvailable": true,
+    "note": "Unofficial values from community repos — verify chainId via eth_chainId before use."
+  },
+  "mainnet": {
+    "name": "portaldot-mainnet",
+    "evmRpc": null,
+    "chainId": null,
+    "substrateWs": "wss://mainnet.portaldot.io",
+    "decimals": 14,
+    "evmAvailable": false,
+    "note": "Portaldot MAINNET exposes NO EVM JSON-RPC as of 2026-10-22 (eth_chainId => method not found). Umbra's Solidity contracts CANNOT deploy here until an EVM is live. When it is, set MAINNET_EVM_RPC + MAINNET_CHAIN_ID (verified via eth_chainId) and re-run with NETWORK=mainnet. Do NOT deploy a privacy pool to mainnet without an audit + a real trusted-setup ceremony (see docs/MAINNET.md)."
+  }
+}
