@@ -6,7 +6,7 @@ winners **Nov 11**.
 
 | Date | Focus | Concrete output | Commit? |
 |---|---|---|---|
-| **Oct 22** ✅ | Build core | Contracts + ZK (withdraw + join-split) + SDK + frontend + relayer + coprocessor; **24/24 tests** | ✅ done (4+ commits) |
+| **Oct 22** ✅ | Build core | Contracts + ZK (withdraw + join-split) + SDK + frontend + relayer + coprocessor; **audited; 31 contract + 7 WASM tests, 25-check E2E** | ✅ done (4+ commits) |
 | **Oct 23** | Testnet bring-up | `make zk` (prod-style), `forge build`, `make deploy` to V3 testnet; smoke-test deposit→withdraw on-chain; **push public repo** | ✅ |
 | **Oct 24** | **Check-in (12:00)** | Submit working prototype + 60s teaser clip; confirm testnet addresses in README | ✅ |
 | **Oct 25** | Shielded-transfer UI | Frontend "Send privately" tab on the join-split engine (keypair, scan `NewCommitment`, decrypt, build tx) | ✅ |

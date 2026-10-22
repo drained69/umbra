@@ -24,7 +24,8 @@ The codebase is built so that going to mainnet is a configuration change, not a 
    NETWORK=mainnet MAINNET_EVM_RPC=<rpc> MAINNET_CHAIN_ID=<id> make deploy
    ```
    (The deploy aborts unless `eth_chainId` matches.)
-2. **14-decimal POT** handled everywhere via `decimals` config — no hardcoded 18.
+2. **Units handled explicitly**: native POT is 14-dec, the EVM layer is 18-dec (×10⁴);
+   `networks.json` records both and `make preflight` re-verifies the ratio on any network.
 3. **VM-agnostic verification** — the same pools work with the on-chain verifier or the
    WASM coprocessor on either network.
 

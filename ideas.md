@@ -22,7 +22,7 @@ Private, unlinkable native-token payments on Portaldot V3. Shielded pool (Tornad
 
 **Why this idea**: (1) structurally depends on the dual-VM → airtight "why Portaldot" for Innovation; (2) privacy is a category no other submission occupies; (3) ships as a reusable privacy primitive + ZK-coprocessor SDK → Ecosystem; (4) confidential payments + selective disclosure is the live frontier (Aztec, confidential stablecoins), relayer fee = revenue → Business.
 
-**Status**: contracts + ZK + SDK + frontend + relayer + coprocessor all built; 13/13 Foundry tests pass incl. on-chain verification of a real Groth16 proof. See README.md and docs/.
+**Status**: contracts + ZK + SDK + frontend + relayer + coprocessor all built; internally audited (AUDIT_REPORT.md); 31 contract + 7 WASM tests + 25-check E2E pass. See README.md and docs/.
 
 ### Architecture (built — see docs/ARCHITECTURE.md + docs/CROSS_VM.md)
 
@@ -35,7 +35,7 @@ Private, unlinkable native-token payments on Portaldot V3. Shielded pool (Tornad
 
 ### Timeline (UTC deadlines)
 
-- **Oct 22 (today)**: full stack built + 13/13 tests green → satisfies the Oct 24 *working prototype* check-in. Next: deploy to testnet (`make deploy`), record a ≤3-min demo per docs/DEMO.md.
+- **Oct 22 (today)**: full stack built, audited, all tests green → satisfies the Oct 24 *working prototype* check-in. Next: deploy to testnet (`make deploy`), record a ≤3-min demo per docs/DEMO.md.
 - **Oct 24 12:00**: check-in (working prototype) — ✅ ready.
 - **Oct 27**: office-hours application deadline — apply for mentor feedback.
 - **Oct 30–Nov 4**: polish; optional stretch = join-split arbitrary-value private transfer.

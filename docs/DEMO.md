@@ -37,7 +37,8 @@ POT payments private, and it does it using the one thing unique to Portaldot V3:
   Portaldot ecosystem — and the ZK-coprocessor pattern any V3 dApp can reuse."
 
 ## Judge one-liners (keep in your back pocket)
-- *Feasibility*: "Real circuit, real trusted setup, 13/13 tests, and the on-chain verifier
+- *Feasibility*: "Real circuits, 31 contract + 7 WASM tests, a 25-check end-to-end run on the
+  real deploy pipeline, audited with every finding fixed — and the on-chain verifier
   accepts a genuinely-generated proof — not a mock."
 - *Innovation*: "WASM-as-ZK-coprocessor for an EVM asset layer is new, and only natural on
   a dual-VM chain."

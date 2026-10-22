@@ -40,20 +40,21 @@ This "right VM for the right job" split is the answer to the question every judg
 
 ## Status (what is actually proven)
 
-| Component | State |
-|---|---|
-| Fixed-denom pool state machine (Merkle, nullifiers, relayer, factory) | ✅ `forge test` |
-| **Join-split engine** (arbitrary-value deposit/withdraw/transfer, 2-in/2-out) | ✅ `forge test` |
-| ZK circuits (withdraw + transaction) + trusted setup + SDK math | ✅ real proofs generated & verified (JS) |
-| On-chain Groth16 verifiers accept real proofs, reject tampered | ✅ `forge test` |
-| Frontend (deposit / withdraw / audit + visualizer) | ✅ `vite build` passes |
-| Gasless relayer | ✅ implemented (local proof precheck + submit) |
-| ink!/WASM coprocessor (dual-VM verify) | ✅ source + build; wired via bridge/attestor |
-| Multi-network deploy (testnet now; mainnet when EVM ships) | ✅ `scripts/` |
+Audited internally — see [`AUDIT_REPORT.md`](AUDIT_REPORT.md): 17 findings (1 Critical, 4 High),
+all Critical/High/Medium/Low fixed with regression tests; 2 informational items acknowledged.
 
-**24/24 contract tests pass**, including on-chain verification of genuinely generated
-Groth16 proofs for **both** circuits. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
-[`docs/CROSS_VM.md`](docs/CROSS_VM.md), [`docs/SCHEDULE.md`](docs/SCHEDULE.md).
+| Layer | Evidence | Command |
+|---|---|---|
+| Contracts (both pools, factory, bridge) | **31 tests**, incl. real Groth16 proofs verified on-chain + audit regressions | `make test` |
+| WASM coprocessor core | **7 tests**: verifies the *same* real proofs as Solidity; rejects tampering, off-curve, non-canonical | `make coprocessor-test` |
+| Full system on a real EVM | **25 E2E checks**: real deploy pipeline → ZK withdrawals, join-split deposit → private transfer → withdraw, viewing keys, relayer | `make e2e` |
+| Live Portaldot V3 testnet compatibility | BN254 precompiles, raw bytecode, units ratio, chain id | `make preflight` |
+| ZK artifacts ↔ verifiers consistency | SHA-256 pinned | `node circuits/scripts/manifest.js --check` |
+| SDK + frontend | typecheck + production build | `make check` |
+
+All of the above run in CI (`.github/workflows/ci.yml`). See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/CROSS_VM.md`](docs/CROSS_VM.md),
+[`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Two shielded pools, one engine
 
@@ -74,29 +75,32 @@ Full detail and the (non-fabricated) status: [`docs/MAINNET.md`](docs/MAINNET.md
 ## Quickstart
 
 ```bash
-make install          # JS deps for all packages
-make test             # Foundry tests (contracts + real-proof verifier)
-make zk               # trusted setup -> WithdrawVerifier.sol + proving artifacts
-cp .env.example .env  # add a testnet PRIVATE_KEY (14-decimal POT!)
-make deploy           # deploy Poseidon + verifier + factory + pools to Portaldot V3
+make install          # deps for every package (forge-std pinned, npm ci)
+make check            # contract tests + artifact pins + SDK typecheck + frontend build
+make e2e              # full system on a throwaway local chain
+cp .env.example .env  # add a testnet PRIVATE_KEY (fund it from the Portaldot faucet)
+make deploy           # runs `make preflight`, then deploys everything to Portaldot V3
 make relayer          # start the gasless relayer
 make frontend         # open the dApp at http://localhost:5173
 ```
 
-> **POT has 14 decimals, not 18.** All amount math uses `deployment.decimals` — never
-> hardcode 18 (a documented Portaldot V3 footgun).
+> **Units:** native POT has 14 decimals, but Portaldot V3's EVM layer exposes balances and
+> `msg.value` scaled ×10⁴ to **18 decimals** (verified against the live chain — run
+> `make preflight`). All on-chain amounts are 18-dec EVM wei; withdrawals to brand-new
+> addresses must be ≥ 0.1 tPOT (existential deposit).
 
 ## Repository layout
 
 ```
-contracts/     Solidity: UmbraPool, Merkle tree, factory, coprocessor bridge, verifier, tests
-circuits/      circom withdraw circuit + trusted-setup + example prover
-coprocessor/   ink!/WASM Groth16 verifier (arkworks bn254) — the dual-VM coprocessor
-sdk/           TS client: notes, Merkle paths, proofs, viewing keys (shared by app + relayer)
-relayer/       gasless withdrawal relayer (+ optional cross-VM attestation)
+contracts/     Solidity: both pools, Merkle trees, factory, coprocessor bridge, verifiers, tests
+circuits/      circom circuits (withdraw, join-split) + trusted setup + fixture provers + manifest
+coprocessor/   groth16/ (no_std arkworks core, tested) + contract/ (ink! WASM coprocessor)
+sdk/           TS SDK: notes, UTXOs, keypairs, Merkle, provers, viewing keys, pool clients
+               artifacts/ = proving keys + wasm + vkeys (pinned by MANIFEST.json); test/ = E2E
+relayer/       hardened gasless withdrawal relayer (+ fail-closed cross-VM attestation)
 frontend/      React/Vite dApp with the "what leaks" privacy visualizer
-scripts/       testnet deploy pipeline
-docs/          architecture, cross-VM, demo script, security/threat model
+scripts/       preflight, multi-network deploy, vk_to_words, e2e runner
+docs/          architecture, cross-VM, security, mainnet, demo script, schedule
 ```
 
 ## How this maps to the judging criteria
@@ -104,7 +108,8 @@ docs/          architecture, cross-VM, demo script, security/threat model
 - **Innovation (30%)** — WASM-as-ZK-coprocessor for an EVM asset layer is a novel,
   chain-native pattern; viewing keys turn a mixer into a compliance-capable layer.
 - **Technical feasibility (30%)** — real circuit, real trusted setup, real on-chain proof
-  verification, 13/13 tests, building blocks all exercised end-to-end.
+  verification on-chain *and* in WASM, 31 + 7 tests, a 25-check E2E on the real deploy
+  pipeline, and live-testnet preflight.
 - **Ecosystem contribution (20%)** — ships a reusable privacy primitive **and** a drop-in
   ZK-coprocessor pattern + SDK other Portaldot dApps can adopt (private DEX, DAO voting,
   payroll — see `docs/ARCHITECTURE.md` §Roadmap).
