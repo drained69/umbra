@@ -3,7 +3,7 @@
 export const POOL_ABI = [
   "function denomination() view returns (uint256)",
   "function deposit(uint256 commitment, bytes encryptedMemo) payable",
-  "function withdraw(uint256[2] a,uint256[2][2] b,uint256[2] c,uint256 root,uint256 nullifierHash,address recipient,address relayer,uint256 fee,uint256 refund) payable",
+  "function withdraw(uint256[2] a,uint256[2][2] b,uint256[2] c,uint256 root,uint256 nullifierHash,address recipient,address relayer,uint256 fee,uint256 refund)",
   "function isSpent(uint256 nullifierHash) view returns (bool)",
   "function isKnownRoot(uint256 root) view returns (bool)",
   "function getLastRoot() view returns (uint256)",

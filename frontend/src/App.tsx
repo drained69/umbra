@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { UmbraPoolClient, deriveViewingKey } from "@umbra/sdk";
-import { connectWallet, DEPLOYMENT, formatPOT, parsePOT, short } from "./lib/chain";
+import { connectWallet, DEPLOYMENT, parsePOT, short } from "./lib/chain";
 import DepositPanel from "./components/DepositPanel";
 import WithdrawPanel from "./components/WithdrawPanel";
 import AuditorPanel from "./components/AuditorPanel";
@@ -23,7 +23,7 @@ export default function App() {
 
   const client = useMemo(() => {
     if (!signer || !configured) return null;
-    return new UmbraPoolClient(pools[denom], signer);
+    return new UmbraPoolClient(pools[denom], signer, { deployBlock: (DEPLOYMENT as any).deployBlock ?? 0 });
   }, [signer, denom, configured]);
 
   async function connect() {
@@ -35,7 +35,7 @@ export default function App() {
 
   async function makeViewingKey() {
     if (!signer) return;
-    const vk = await deriveViewingKey((m) => signer.signMessage(m));
+    const vk = await deriveViewingKey((m) => signer.signMessage(m), DEPLOYMENT.chainId);
     setViewingKey(vk);
   }
 
@@ -111,7 +111,7 @@ export default function App() {
       <div className="footer">
         Umbra · Portaldot Hacker House 2026 · EVM asset layer + WASM ZK coprocessor on one chain.
         <br />
-        Pool balance shown in tPOT via {DEPLOYMENT.decimals}-decimal formatting ({formatPOT(parsePOT("1"))} = 1 tPOT).
+        On-chain amounts use {DEPLOYMENT.decimals}-decimal EVM units (native POT is 14-dec, scaled ×10⁴).
       </div>
     </div>
   );

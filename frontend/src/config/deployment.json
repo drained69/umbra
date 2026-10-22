@@ -2,15 +2,20 @@
   "network": "portaldot-v3-testnet",
   "chainId": 420420777,
   "rpc": "https://test-evm-rpc-v3.portaldot.dev",
-  "decimals": 14,
+  "decimals": 18,
+  "nativeDecimals": 14,
+  "deployBlock": 0,
   "verifierMode": "onchain",
   "treeLevels": 20,
   "relayerFeeBps": 50,
   "contracts": {
     "poseidon": "0x0000000000000000000000000000000000000000",
+    "withdrawVerifier": "0x0000000000000000000000000000000000000000",
+    "transactionVerifier": "0x0000000000000000000000000000000000000000",
     "verifier": "0x0000000000000000000000000000000000000000",
     "factory": "0x0000000000000000000000000000000000000000",
-    "pools": {}
+    "pools": {},
+    "shieldedPool": "0x0000000000000000000000000000000000000000"
   },
-  "note": "Placeholder — overwritten by scripts/deploy.js after a real testnet deploy."
+  "note": "Placeholder — overwritten by scripts/deploy.js. 'decimals' is the EVM unit (18); native POT is 14 (ratio 10^4)."
 }

@@ -8,3 +8,5 @@ export * from "./client";
 export * from "./keypair";
 export * from "./utxo";
 export * from "./transaction";
+export * from "./units";
+export * from "./shieldedClient";

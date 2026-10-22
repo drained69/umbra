@@ -28,7 +28,10 @@ export async function connectWallet(): Promise<{ provider: ethers.BrowserProvide
   return { provider, signer, address: await signer.getAddress() };
 }
 
-/** POT uses 14 decimals on Portaldot V3 — NOT 18. Always format with this. */
+/**
+ * On-chain (EVM) amounts are 18-decimal: pallet-revive scales native 14-dec POT by 10^4.
+ * `DEPLOYMENT.decimals` is the EVM unit (18). Never format EVM values with 14.
+ */
 export function formatPOT(wei: bigint): string {
   return ethers.formatUnits(wei, DEPLOYMENT.decimals);
 }

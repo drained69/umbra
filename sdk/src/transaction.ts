@@ -32,7 +32,11 @@ export interface TransactionProof {
   outputCommitments: [bigint, bigint];
 }
 
-const EXT_DATA_TYPES = ["address", "int256", "address", "uint256", "bytes", "bytes"];
+// Must equal Solidity `abi.encode(extData)` for the ExtData STRUCT. Because the struct has
+// dynamic `bytes` members it is ABI-encoded as a dynamic tuple (leading 0x20 offset), so we
+// encode a single tuple — NOT a flat parameter list (that produced a different hash and made
+// every on-chain transact revert with ExtDataHashMismatch; caught by the E2E test).
+const EXT_DATA_TYPES = ["tuple(address,int256,address,uint256,bytes,bytes)"];
 
 export function calculatePublicAmount(extAmount: bigint, fee: bigint): bigint {
   const publicAmount = extAmount - fee;
@@ -41,12 +45,14 @@ export function calculatePublicAmount(extAmount: bigint, fee: bigint): bigint {
 
 export function extDataHash(ext: ExtData): bigint {
   const encoded = ethers.AbiCoder.defaultAbiCoder().encode(EXT_DATA_TYPES, [
-    ext.recipient,
-    ext.extAmount,
-    ext.relayer,
-    ext.fee,
-    "0x" + bytesToHex(ext.encryptedOutput1),
-    "0x" + bytesToHex(ext.encryptedOutput2),
+    [
+      ext.recipient,
+      ext.extAmount,
+      ext.relayer,
+      ext.fee,
+      "0x" + bytesToHex(ext.encryptedOutput1),
+      "0x" + bytesToHex(ext.encryptedOutput2),
+    ],
   ]);
   return BigInt(ethers.keccak256(encoded)) % FIELD_SIZE;
 }

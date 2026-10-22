@@ -6,6 +6,7 @@ import {
   scanMemos,
   type Memo,
 } from "@umbra/sdk";
+import { formatPOT } from "../lib/chain";
 
 interface Props {
   client: UmbraPoolClient;
@@ -13,33 +14,46 @@ interface Props {
   denomLabel: string;
 }
 
+interface Row {
+  memo: Memo;
+  txHash?: string;
+  blockNumber?: number;
+  spent: boolean;
+}
+
 /**
- * Selective disclosure: privacy WITH optional auditability. Your history is encrypted to
- * a viewing key. You can read your own; or hand the key to an auditor who can then — and
- * ONLY then — reconstruct exactly your activity, with nothing exposed publicly.
+ * Selective disclosure: privacy WITH optional auditability. History is encrypted to a
+ * READ-ONLY viewing key. Handing it to an auditor reveals deposits and whether each was
+ * later withdrawn — but grants no ability to move funds (memos carry no spend secrets).
  */
 export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props) {
   const [keyInput, setKeyInput] = useState("");
-  const [rows, setRows] = useState<{ memo: Memo; txHash?: string; blockNumber?: number }[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [status, setStatus] = useState<{ t: "ok" | "err" | "info"; m: string } | null>(null);
 
   async function scan(key: Uint8Array) {
-    setStatus({ t: "info", m: "Scanning pool deposits and decrypting memos owned by this key…" });
-    const deposits = await client.scanDeposits();
-    const blobs = deposits
-      .filter((d) => d.encryptedMemo && d.encryptedMemo !== "0x")
-      .map((d) => ({
-        memo: hexToBytes(d.encryptedMemo),
-        txHash: d.txHash,
-        blockNumber: d.blockNumber,
-      }));
-    const found = scanMemos(key, blobs);
-    setRows(found);
-    setStatus(
-      found.length
-        ? { t: "ok", m: `Disclosed ${found.length} action(s) belonging to this viewing key.` }
-        : { t: "info", m: "No actions decrypt with this key in this pool." }
-    );
+    try {
+      setStatus({ t: "info", m: "Scanning pool deposits and decrypting memos owned by this key…" });
+      const deposits = await client.scanDeposits();
+      const blobs = deposits
+        .filter((d) => d.encryptedMemo && d.encryptedMemo !== "0x")
+        .map((d) => ({ memo: hexToBytes(d.encryptedMemo), txHash: d.txHash, blockNumber: d.blockNumber }));
+      const found = scanMemos(key, blobs);
+      const withStatus: Row[] = await Promise.all(
+        found.map(async (f) => ({
+          ...f,
+          spent: await client.isNullifierSpent(BigInt("0x" + f.memo.nullifierHash)),
+        }))
+      );
+      setRows(withStatus);
+      setStatus(
+        withStatus.length
+          ? { t: "ok", m: `Disclosed ${withStatus.length} deposit(s) belonging to this viewing key.` }
+          : { t: "info", m: "No actions decrypt with this key in this pool." }
+      );
+    } catch (e: any) {
+      setStatus({ t: "err", m: e?.message || String(e) });
+    }
   }
 
   return (
@@ -47,7 +61,7 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props
       <h2>Viewing key &amp; selective disclosure</h2>
       <p className="hint">
         Compliance without surveillance. Reveal your {denomLabel}-pool history to yourself, or to an
-        auditor you choose — no one else, ever.
+        auditor you choose. The key is <b>read-only</b> — it cannot withdraw anything.
       </p>
 
       <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -70,7 +84,7 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props
           onClick={() => {
             try {
               scan(importViewingKey(keyInput));
-            } catch (e: any) {
+            } catch {
               setStatus({ t: "err", m: "invalid viewing key" });
             }
           }}
@@ -87,17 +101,19 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props
             <tr>
               <th>Action</th>
               <th>Amount (tPOT)</th>
+              <th>Status</th>
               <th>When</th>
-              <th>Tx</th>
+              <th>Commitment</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
                 <td>{r.memo.action}</td>
-                <td>{Number(BigInt(r.memo.denomination)) / 1e14}</td>
+                <td>{formatPOT(BigInt(r.memo.denomination))}</td>
+                <td>{r.spent ? "withdrawn" : "shielded"}</td>
                 <td>{new Date(r.memo.ts).toLocaleString()}</td>
-                <td className="mono">{r.txHash?.slice(0, 12)}…</td>
+                <td className="mono">0x{r.memo.commitment.slice(0, 10)}…</td>
               </tr>
             ))}
           </tbody>

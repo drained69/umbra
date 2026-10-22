@@ -27,6 +27,7 @@ export class Keypair {
 
   /** signature = Poseidon(privateKey, commitment, merklePath) */
   sign(commitment: bigint, merklePath: bigint): bigint {
+    if (this.privateKey < 0n) throw new Error("receive-only keypair cannot sign");
     return poseidon3([this.privateKey, commitment, merklePath]) % FIELD_SIZE;
   }
 
@@ -42,8 +43,28 @@ export class Keypair {
 
   static publicFromAddress(addr: string): { publicKey: bigint; encPublic: Uint8Array } {
     const parts = addr.replace(/^umbra-addr-/, "").split("-");
-    if (parts.length !== 2) throw new Error("invalid shielded address");
+    if (parts.length !== 2 || parts[0].length !== 64 || parts[1].length !== 64) {
+      throw new Error("invalid shielded address");
+    }
     return { publicKey: BigInt("0x" + parts[0]), encPublic: hexToBytes(parts[1]) };
+  }
+
+  /**
+   * A receive-only keypair for someone else's shielded address: it can own OUTPUTS you
+   * create for them, but has no spend key (calling `sign` throws).
+   */
+  static fromAddress(addr: string): Keypair {
+    const { publicKey, encPublic } = Keypair.publicFromAddress(addr);
+    const k = Object.create(Keypair.prototype) as Keypair;
+    k.privateKey = -1n;
+    k.publicKey = publicKey;
+    k.encPublic = encPublic;
+    k.encSecret = new Uint8Array();
+    return k;
+  }
+
+  get canSpend(): boolean {
+    return this.privateKey >= 0n;
   }
 
   /** Portable backup of the spend key. */

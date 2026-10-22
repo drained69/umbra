@@ -11,24 +11,53 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { utf8ToBytes, bytesToHex, hexToBytes } from "@noble/hashes/utils";
 
-export const VIEWING_KEY_MESSAGE = "Umbra Portaldot V3 — derive my viewing key (v1)";
+/**
+ * Domain-separated viewing-key message (audit L-04): bound to app, version, chain and
+ * purpose, so a signature collected by another app/chain can't reproduce this key.
+ */
+export function viewingKeyMessage(chainId: number | bigint): string {
+  return [
+    "Umbra viewing key (v2)",
+    `Chain ID: ${chainId}`,
+    "Purpose: derive a READ-ONLY key that reveals your Umbra activity to you, or to an",
+    "auditor you choose. It CANNOT move funds. Only sign this on the Umbra app.",
+  ].join("\n");
+}
 
-/** Sign `VIEWING_KEY_MESSAGE` with an ethers Signer, hash to a 32-byte key. */
-export async function deriveViewingKey(signMessage: (m: string) => Promise<string>): Promise<Uint8Array> {
-  const sig = await signMessage(VIEWING_KEY_MESSAGE);
+/** Sign the domain-separated message with the wallet, hash to a 32-byte key. */
+export async function deriveViewingKey(
+  signMessage: (m: string) => Promise<string>,
+  chainId: number | bigint
+): Promise<Uint8Array> {
+  const sig = await signMessage(viewingKeyMessage(chainId));
   return keccak_256(hexToBytes(sig.replace(/^0x/, "")));
 }
 
+/**
+ * What a viewing key reveals. SECURITY (audit C-01): a memo must NEVER contain spend
+ * secrets (nullifier / secret / private key). It carries only public-at-spend-time or
+ * descriptive fields, so disclosing a viewing key reveals history but grants NO ability
+ * to withdraw. `nullifierHash` becomes public when the note is spent, which is exactly
+ * what lets an auditor link a deposit to its later withdrawal — read-only.
+ */
 export interface Memo {
   action: "deposit" | "transfer" | "withdraw";
-  denomination: string; // decimal wei
-  nullifier: string; // hex
-  secret: string; // hex
+  denomination: string; // decimal EVM wei (18-dec)
+  commitment: string; // hex — the on-chain leaf
+  nullifierHash: string; // hex — revealed on-chain at withdrawal
   ts: number;
-  note?: string; // optional recipient-facing note
+  note?: string; // optional free-text label
 }
 
+const FORBIDDEN_MEMO_KEYS = ["nullifier", "secret", "privateKey", "blinding", "spendKey"];
+
 export function encryptMemo(viewingKey: Uint8Array, memo: Memo): Uint8Array {
+  // Defense in depth: refuse to encrypt anything that would grant spend authority.
+  for (const k of FORBIDDEN_MEMO_KEYS) {
+    if (k in (memo as unknown as Record<string, unknown>)) {
+      throw new Error(`refusing to put spend secret '${k}' in a viewing-key memo`);
+    }
+  }
   const nonce = crypto.getRandomValues(new Uint8Array(24));
   const plaintext = utf8ToBytes(JSON.stringify(memo));
   const ct = xchacha20poly1305(viewingKey, nonce).encrypt(plaintext);

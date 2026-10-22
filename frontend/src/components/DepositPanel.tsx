@@ -36,11 +36,13 @@ export default function DepositPanel({ client, denomLabel, denomWei, viewingKey 
     try {
       let memo = new Uint8Array();
       if (viewingKey) {
+        // Read-only memo: NO spend secrets (audit C-01). The note backup is the only
+        // thing that can withdraw; the viewing key only reveals history.
         memo = encryptMemo(viewingKey, {
           action: "deposit",
           denomination: denomWei.toString(),
-          nullifier: note.nullifier.toString(16),
-          secret: note.secret.toString(16),
+          commitment: commitment(note).toString(16),
+          nullifierHash: nullifierHash(note).toString(16),
           ts: Date.now(),
         });
       }
