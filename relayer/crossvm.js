@@ -1,80 +1,71 @@
 /*
- * Cross-VM attestation: run the Groth16 verify inside Portaldot's WASM VM (the ink!
- * `umbra_coprocessor`), then mirror the boolean onto the EVM via UmbraCoprocessorBridge.
+ * Cross-VM attestation (CROSS_VM.md, Path B): verify the Groth16 proof INSIDE Portaldot's
+ * WASM VM (the ink! `umbra_coprocessor`), then mirror the result onto the EVM bridge.
  *
- * This is the demonstrable dual-VM path on testnet when a direct EVM->WASM precompile
- * isn't available: one chain, both VMs, in a single withdrawal flow.
+ * Proofs are passed in the EVM calldata encoding (32-byte big-endian words) — the same bytes
+ * the Solidity verifier would see — so nothing is re-serialized between VMs (audit H-02).
  *
- * Enabled by CROSS_VM=1 and these env vars:
+ * Enabled by CROSS_VM=1 with:
  *   PORTALDOT_WS=wss://test-node-v3.portaldot.dev
- *   COPROCESSOR_CONTRACT=<ink! contract address (SS58)>
- *   COPROCESSOR_METADATA=./coprocessor/target/ink/umbra_coprocessor.json
- *   BRIDGE_ADDRESS=<UmbraCoprocessorBridge EVM address>
- *   SUBSTRATE_SEED="//Alice"   (attestor account, must == bridge.attestor / coprocessor caller)
+ *   COPROCESSOR_CONTRACT=<ink! contract SS58 address for the withdraw circuit>
+ *   COPROCESSOR_METADATA=coprocessor/target/ink/umbra_coprocessor/umbra_coprocessor.json
+ *   SUBSTRATE_SEED=<attestor seed>   (testnet only; never a funded mainnet key)
+ * and deployment.verifierMode === "coprocessor" (pool verifier is UmbraCoprocessorBridge).
  *
- * If disabled or dependencies are missing, this is a no-op and the on-chain verifier
- * path is used instead — the pool interface is identical either way.
+ * Fails CLOSED: if CROSS_VM=1 and the WASM verification can't run or returns false, the
+ * withdrawal is NOT submitted.
  */
 import { ethers } from "ethers";
 import { readFileSync } from "node:fs";
 
-const BRIDGE_ABI = ["function attest(bytes32 proofHash)"];
+const BRIDGE_ABI = [
+  "function attest(bytes32 proofHash)",
+  "function attested(bytes32) view returns (bool)",
+  "function proofHashOf(uint256[2] a,uint256[2][2] b,uint256[2] c,uint256[] publicSignals) view returns (bytes32)",
+];
 
-function proofHash({ a, b, c, publicSignals }) {
-  const coder = ethers.AbiCoder.defaultAbiCoder();
-  const encoded = coder.encode(
-    ["uint256[2]", "uint256[2][2]", "uint256[2]", "uint256[]"],
-    [a, b, c, publicSignals]
-  );
-  return ethers.keccak256(encoded);
+const word = (x) => ethers.zeroPadValue(ethers.toBeHex(BigInt(x)), 32);
+
+let apiPromise = null;
+async function contract() {
+  const { ApiPromise, WsProvider, Keyring } = await import("@polkadot/api");
+  const { ContractPromise } = await import("@polkadot/api-contract");
+  if (!apiPromise) apiPromise = ApiPromise.create({ provider: new WsProvider(process.env.PORTALDOT_WS) });
+  const api = await apiPromise;
+  const metadata = JSON.parse(readFileSync(process.env.COPROCESSOR_METADATA, "utf8"));
+  const signer = new Keyring({ type: "sr25519" }).addFromUri(process.env.SUBSTRATE_SEED);
+  return { api, c: new ContractPromise(api, metadata, process.env.COPROCESSOR_CONTRACT), signer };
 }
 
-export async function maybeCrossVmAttest({ a, b, c, publicSignals, deployment, evmWallet }) {
-  if (process.env.CROSS_VM !== "1") return { skipped: true };
+export function crossVmEnabled() {
+  return process.env.CROSS_VM === "1";
+}
 
-  const hash = proofHash({ a, b, c, publicSignals });
+/**
+ * @returns {{ attested: boolean, proofHash?: string }}
+ * @throws if cross-VM is enabled and verification fails or is unavailable (fail closed)
+ */
+export async function crossVmAttest({ a, b, c, publicSignals, bridgeAddress, evmWallet }) {
+  if (!crossVmEnabled()) return { attested: false };
 
-  // 1. Verify in the WASM VM via polkadot.js (optional dependency).
-  let wasmResult = null;
-  try {
-    const { ApiPromise, WsProvider, Keyring } = await import("@polkadot/api");
-    const { ContractPromise } = await import("@polkadot/api-contract");
-    const api = await ApiPromise.create({ provider: new WsProvider(process.env.PORTALDOT_WS) });
-    const metadata = JSON.parse(readFileSync(process.env.COPROCESSOR_METADATA, "utf8"));
-    const contract = new ContractPromise(api, metadata, process.env.COPROCESSOR_CONTRACT);
-    const keyring = new Keyring({ type: "sr25519" });
-    const signer = keyring.addFromUri(process.env.SUBSTRATE_SEED || "//Alice");
+  const bridge = new ethers.Contract(bridgeAddress, BRIDGE_ABI, evmWallet);
+  const proofHash = await bridge.proofHashOf(a, b, c, publicSignals); // domain-separated (M-01)
+  if (await bridge.attested(proofHash)) return { attested: true, proofHash };
 
-    // ark-serialized proof + 32-byte LE public inputs are produced by the SDK; here we
-    // pass through what the client supplied. (See sdk: toCoprocessorArgs.)
-    const proofBytes = process.env._PROOF_BYTES || "0x"; // supplied by client in cross-VM mode
-    const publicInputs = publicSignals.map((s) =>
-      ethers.zeroPadValue(ethers.toBeHex(BigInt(s)), 32)
-    );
+  const { api, c: coproc, signer } = await contract();
+  const gasLimit = api.registry.createType("WeightV2", { refTime: 100_000_000_000n, proofSize: 2_000_000n });
+  const args = [
+    [word(a[0]), word(a[1])],
+    [word(b[0][0]), word(b[0][1]), word(b[1][0]), word(b[1][1])], // EVM order, unchanged
+    [word(c[0]), word(c[1])],
+    publicSignals.map(word),
+  ];
+  const { result, output } = await coproc.query.check(signer.address, { gasLimit, storageDepositLimit: null }, ...args);
+  if (result.isErr) throw new Error(`WASM coprocessor call failed: ${result.asErr.toString()}`);
+  const verdict = output?.toJSON?.();
+  const ok = verdict?.ok === true || verdict?.ok?.ok === true;
+  if (!ok) throw new Error(`WASM coprocessor rejected the proof: ${JSON.stringify(verdict)}`);
 
-    const gasLimit = api.registry.createType("WeightV2", {
-      refTime: 50_000_000_000n,
-      proofSize: 1_000_000n,
-    });
-    const { output } = await contract.query.verify(
-      signer.address,
-      { gasLimit, storageDepositLimit: null },
-      proofBytes,
-      publicInputs,
-      hash
-    );
-    wasmResult = output?.toJSON?.();
-    await api.disconnect();
-  } catch (e) {
-    console.warn("[crossvm] WASM verify unavailable, falling back:", e?.message || e);
-    return { skipped: true, reason: "wasm-unavailable" };
-  }
-
-  // 2. Mirror the result onto the EVM bridge so the pool's verifier reads `attested`.
-  if (deployment.contracts.verifier && deployment.verifierMode === "coprocessor") {
-    const bridge = new ethers.Contract(deployment.contracts.verifier, BRIDGE_ABI, evmWallet);
-    const tx = await bridge.attest(hash);
-    await tx.wait();
-  }
-  return { proofHash: hash, wasmResult };
+  await (await bridge.attest(proofHash)).wait();
+  return { attested: true, proofHash };
 }

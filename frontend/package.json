@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sync-zk": "node -e \"require('fs').cpSync('../sdk/artifacts','public/zk',{recursive:true})\"",
+    "predev": "npm run sync-zk",
     "dev": "vite",
+    "prebuild": "npm run sync-zk",
     "build": "vite build",
     "preview": "vite preview --port 5173"
   },

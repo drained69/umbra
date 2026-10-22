@@ -1,30 +1,52 @@
-.PHONY: help install test zk deploy relayer frontend coprocessor clean
+.PHONY: help install test check e2e zk preflight deploy relayer frontend coprocessor coprocessor-test clean
+
+FORGE_STD_VERSION := v1.17.0
 
 help:
 	@echo "Umbra — confidential tPOT on Portaldot V3"
 	@echo ""
-	@echo "  make install      install all JS deps (contracts use foundry)"
-	@echo "  make test         compile + run Foundry tests (contracts + real-proof verifier)"
-	@echo "  make zk           run the ZK trusted setup -> WithdrawVerifier.sol + proving artifacts"
-	@echo "  make deploy       deploy to Portaldot V3 testnet (needs .env)"
-	@echo "  make relayer      start the gasless withdrawal relayer"
-	@echo "  make frontend     start the dApp (vite dev server)"
-	@echo "  make coprocessor  build the ink!/WASM Groth16 coprocessor (needs cargo-contract)"
+	@echo "  make install           install all deps (forge-std pinned, npm ci everywhere)"
+	@echo "  make test              Foundry unit + regression tests (incl. real-proof verifiers)"
+	@echo "  make coprocessor-test  Rust: WASM coprocessor verifies the same real proofs"
+	@echo "  make check             fast gate: tests + artifact pins + SDK typecheck + frontend build"
+	@echo "  make e2e               full end-to-end on local Anvil (real deploy + SDK + relayer)"
+	@echo "  make zk                re-run trusted setup -> verifiers + keys + fixtures + MANIFEST"
+	@echo "  make preflight         verify the target network can run Umbra (read-only)"
+	@echo "  make deploy            deploy (NETWORK=testnet by default; needs .env)"
+	@echo "  make relayer           start the gasless withdrawal relayer"
+	@echo "  make frontend          start the dApp (vite dev server)"
+	@echo "  make coprocessor       build the deployable ink! contract (needs cargo-contract)"
 
 install:
-	cd circuits && npm install
-	cd sdk && npm install
-	cd scripts && npm install
-	cd relayer && npm install
-	cd frontend && npm install
+	cd contracts && forge install foundry-rs/forge-std@$(FORGE_STD_VERSION) --no-git
+	cd circuits && npm ci
+	cd sdk && npm ci
+	cd scripts && npm ci
+	cd relayer && npm ci --omit=optional
+	cd frontend && npm ci
 
 test:
 	cd contracts && forge test -vv
 
-zk:
-	cd circuits && bash scripts/setup.sh && node scripts/prove_example.js
+coprocessor-test:
+	cd coprocessor && cargo test -p umbra_groth16
+	cd coprocessor && cargo build -p umbra_groth16 --no-default-features --target wasm32-unknown-unknown --release
 
-deploy:
+check: test
+	node circuits/scripts/manifest.js --check
+	cd sdk && npx tsc --noEmit
+	cd frontend && npm run build
+
+e2e:
+	bash scripts/e2e.sh
+
+zk:
+	cd circuits && bash scripts/setup.sh && node scripts/prove_example.js && node scripts/prove_transaction.js
+
+preflight:
+	cd scripts && npm run preflight
+
+deploy: preflight
 	cd contracts && forge build
 	cd scripts && npm run deploy
 
@@ -35,7 +57,7 @@ frontend:
 	cd frontend && npm run dev
 
 coprocessor:
-	cd coprocessor && cargo contract build --release
+	cd coprocessor/contract && cargo contract build --release
 
 clean:
-	rm -rf contracts/out contracts/cache circuits/build */node_modules coprocessor/target
+	rm -rf contracts/out contracts/cache circuits/build coprocessor/target frontend/dist frontend/public/zk

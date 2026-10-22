@@ -50,16 +50,18 @@ build_circuit () {
   $SNARKJS zkey export solidityverifier "$BUILD/${NAME}_final.zkey" "$BUILD/${NAME}VerifierRaw.sol"
   node scripts/adapt_verifier.js "$BUILD/${NAME}VerifierRaw.sol" "$ROOT/../contracts/src/verifiers/$(basename "$CONTRACT").sol" "$(basename "$CONTRACT")"
 
-  echo "==> [$NAME] publish artifacts"
-  for dest in "$ROOT/../sdk/artifacts" "$ROOT/../frontend/public/zk"; do
-    mkdir -p "$dest"
-    cp "$BUILD/${NAME}_js/$NAME.wasm" "$dest/$NAME.wasm"
-    cp "$BUILD/${NAME}_final.zkey" "$dest/${NAME}_final.zkey"
-    cp "$BUILD/${NAME}_verification_key.json" "$dest/${NAME}_verification_key.json"
-  done
+  echo "==> [$NAME] publish artifacts -> sdk/artifacts (single source of truth)"
+  dest="$ROOT/../sdk/artifacts"
+  mkdir -p "$dest"
+  cp "$BUILD/${NAME}_js/$NAME.wasm" "$dest/$NAME.wasm"
+  cp "$BUILD/${NAME}_final.zkey" "$dest/${NAME}_final.zkey"
+  cp "$BUILD/${NAME}_verification_key.json" "$dest/${NAME}_verification_key.json"
 }
 
 build_circuit "withdraw" "WithdrawVerifier"
 build_circuit "transaction" "TransactionVerifier"
 
-echo "==> ZK setup complete for both circuits."
+echo "==> pinning artifacts + verifiers in sdk/artifacts/MANIFEST.json"
+node scripts/manifest.js
+
+echo "==> ZK setup complete for both circuits. Commit sdk/artifacts AND contracts/src/verifiers together."

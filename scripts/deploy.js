@@ -18,7 +18,7 @@ import { ethers } from "ethers";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import circomlibjs from "circomlibjs";
+import { poseidonContract } from "circomlibjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -39,7 +39,8 @@ const CHAIN_ID = Number(
     net.chainId ||
     0
 );
-const DECIMALS = BigInt(process.env.POT_DECIMALS || net.decimals);
+// EVM-side unit (pallet-revive scales native 14-dec POT to 18-dec). Audit H-01.
+const DECIMALS = BigInt(process.env.EVM_DECIMALS || net.evmDecimals);
 const LEVELS = Number(process.env.TREE_LEVELS || 20);
 const MODE = (process.env.VERIFIER_MODE || "onchain").toLowerCase();
 const DENOMS = (process.env.DENOMINATIONS || "1,10,100").split(",").map((s) => s.trim());
@@ -77,12 +78,13 @@ async function main() {
   console.log(`network : ${net.name} (chain ${CHAIN_ID})`);
   console.log(`deployer: ${wallet.address}`);
   console.log(`balance : ${ethers.formatUnits(await provider.getBalance(wallet.address), DECIMALS)} POT`);
+  const deployBlock = await provider.getBlockNumber();
 
   // 1. Poseidon(2)
   const poseidon = await (async () => {
     const f = new ethers.ContractFactory(
-      circomlibjs.poseidonContract.generateABI(2),
-      circomlibjs.poseidonContract.createCode(2),
+      poseidonContract.generateABI(2),
+      poseidonContract.createCode(2),
       wallet
     );
     const c = await f.deploy();
@@ -103,8 +105,8 @@ async function main() {
     withdrawVerifier = await mk();
     txVerifier = await mk();
   } else {
-    withdrawVerifier = await (await deploy(wallet, artifact("WithdrawVerifier", "verifiers/WithdrawVerifier"))).getAddress();
-    txVerifier = await (await deploy(wallet, artifact("TransactionVerifier", "verifiers/TransactionVerifier"))).getAddress();
+    withdrawVerifier = await (await deploy(wallet, artifact("WithdrawVerifier", "WithdrawVerifier"))).getAddress();
+    txVerifier = await (await deploy(wallet, artifact("TransactionVerifier", "TransactionVerifier"))).getAddress();
   }
   console.log(`WithdrawVerifier: ${withdrawVerifier}`);
   console.log(`TransactionVerifier: ${txVerifier}`);
@@ -129,7 +131,9 @@ async function main() {
     network: net.name,
     chainId: CHAIN_ID,
     rpc: RPC,
-    decimals: Number(DECIMALS),
+    decimals: Number(DECIMALS), // EVM unit (18)
+    nativeDecimals: net.nativeDecimals,
+    deployBlock,
     verifierMode: MODE,
     treeLevels: LEVELS,
     relayerFeeBps: Number(process.env.RELAYER_FEE_BPS || 50),
@@ -145,11 +149,15 @@ async function main() {
     deployedAt: new Date().toISOString(),
     deployer: wallet.address,
   };
-  for (const p of [join(ROOT, "deployments", `${NETWORK}.json`), join(ROOT, "frontend", "src", "config", "deployment.json")]) {
+  const targets = [join(ROOT, "deployments", `${NETWORK}.json`)];
+  if (process.env.WRITE_FRONTEND_CONFIG !== "0" && NETWORK !== "local") {
+    targets.push(join(ROOT, "frontend", "src", "config", "deployment.json"));
+  }
+  for (const p of targets) {
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, JSON.stringify(deployment, null, 2));
   }
-  console.log(`\nwrote deployments/${NETWORK}.json + frontend config. done.`);
+  console.log(`\nwrote ${targets.map((t) => t.replace(ROOT + "/", "")).join(" + ")}. done.`);
 }
 
 main().catch((e) => {

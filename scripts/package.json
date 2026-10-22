@@ -5,11 +5,13 @@
   "private": true,
   "description": "Deploy + ops scripts for Umbra on Portaldot V3 testnet",
   "scripts": {
-    "deploy": "node deploy.js"
+    "deploy": "node deploy.js",
+    "preflight": "node preflight.js"
   },
   "dependencies": {
     "circomlibjs": "0.1.7",
     "dotenv": "16.4.5",
-    "ethers": "6.13.2"
+    "ethers": "6.13.2",
+    "@noble/hashes": "1.5.0"
   }
 }

@@ -2,14 +2,14 @@
 /*
  * Umbra withdrawal relayer.
  *
- * Why it matters for privacy: a user who just received shielded funds should be able to
- * withdraw to a fresh address that has never held gas. The relayer pays gas and takes a
- * small fee out of the denomination, so the recipient address stays pristine and
- * unlinkable. The proof binds recipient/relayer/fee, so the relayer cannot cheat.
+ * Lets users withdraw to a brand-new address that has never held gas: the relayer pays gas
+ * and receives a small fee that is BOUND INTO THE PROOF (it cannot redirect funds or raise
+ * its fee). Liveness-only trust: users can always self-withdraw.
  *
- * Optional cross-VM mode (CROSS_VM=1): before submitting, the relayer asks the ink!/WASM
- * coprocessor to verify the proof and mirrors the result on-chain via the bridge, so the
- * EVM withdrawal is gated by a WASM-VM verification. See crossvm.js.
+ * Hardening (audit M-02): pool allowlist, strict input validation, body-size + per-IP rate
+ * limits, in-flight nullifier lock (no double gas burn), local proof pre-check, optional
+ * gas-profitability guard, generic client errors (details only in server logs), and a
+ * fail-closed cross-VM path.
  */
 import "dotenv/config";
 import express from "express";
@@ -19,67 +19,127 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as snarkjs from "snarkjs";
-import { maybeCrossVmAttest } from "./crossvm.js";
+import { crossVmAttest, crossVmEnabled } from "./crossvm.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
-const RPC = process.env.PORTALDOT_RPC || "https://test-evm-rpc-v3.portaldot.dev";
-const CHAIN_ID = Number(process.env.PORTALDOT_CHAIN_ID || 420420777);
-const FEE_BPS = BigInt(process.env.RELAYER_FEE_BPS || 50);
-const PORT = Number(process.env.RELAYER_PORT || 8787);
+const NETWORK = (process.env.NETWORK || "testnet").toLowerCase();
+const deployment = JSON.parse(readFileSync(join(ROOT, "deployments", `${NETWORK}.json`), "utf8"));
+const vkey = JSON.parse(readFileSync(join(ROOT, "sdk", "artifacts", "withdraw_verification_key.json"), "utf8"));
 
-const deployment = JSON.parse(readFileSync(join(ROOT, "deployments", "portaldot-v3.json"), "utf8"));
-const vkey = JSON.parse(readFileSync(join(ROOT, "circuits", "build", "withdraw_verification_key.json"), "utf8"));
+const RPC = process.env.PORTALDOT_RPC || deployment.rpc;
+const CHAIN_ID = Number(deployment.chainId);
+const FEE_BPS = BigInt(process.env.RELAYER_FEE_BPS || deployment.relayerFeeBps || 50);
+const PORT = Number(process.env.RELAYER_PORT || 8787);
+const RATE_PER_MIN = Number(process.env.RELAYER_RATE_PER_MIN || 10);
+const ENFORCE_PROFIT = process.env.RELAYER_ENFORCE_PROFIT === "1";
+const CORS_ORIGIN = process.env.RELAYER_CORS_ORIGIN || "*";
+
+const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n; // r
+const BASE = 21888242871839275222246405745257275088696311157297823662689037894645226208583n; // p
 
 const POOL_ABI = [
   "function denomination() view returns (uint256)",
   "function isSpent(uint256) view returns (bool)",
   "function isKnownRoot(uint256) view returns (bool)",
-  "function withdraw(uint256[2] a,uint256[2][2] b,uint256[2] c,uint256 root,uint256 nullifierHash,address recipient,address relayer,uint256 fee,uint256 refund) payable",
+  "function withdraw(uint256[2] a,uint256[2][2] b,uint256[2] c,uint256 root,uint256 nullifierHash,address recipient,address relayer,uint256 fee,uint256 refund)",
 ];
 
-const provider = new ethers.JsonRpcProvider(RPC, CHAIN_ID);
+if (!process.env.PRIVATE_KEY) throw new Error("set PRIVATE_KEY");
+const provider = new ethers.JsonRpcProvider(RPC, CHAIN_ID, { staticNetwork: true });
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
+// Only pools we deployed can be targeted (prevents gas griefing via arbitrary contracts).
+const ALLOWED_POOLS = new Set(Object.values(deployment.contracts.pools).map((a) => ethers.getAddress(a)));
+const inFlight = new Set(); // nullifierHash strings currently being relayed
+
+class ClientError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// --- validation helpers ---
+function fieldStr(v, mod, name) {
+  let x;
+  try {
+    x = BigInt(v);
+  } catch {
+    throw new ClientError(400, `invalid ${name}`);
+  }
+  if (x < 0n || x >= mod) throw new ClientError(400, `${name} out of field range`);
+  return x.toString();
+}
+function point(arr, n, name) {
+  if (!Array.isArray(arr) || arr.length !== n) throw new ClientError(400, `invalid ${name}`);
+  return arr;
+}
+
+// --- tiny per-IP token bucket ---
+const buckets = new Map();
+function rateLimit(req, res, next) {
+  const ip = req.ip || "unknown";
+  const now = Date.now();
+  const b = buckets.get(ip) || { tokens: RATE_PER_MIN, at: now };
+  b.tokens = Math.min(RATE_PER_MIN, b.tokens + ((now - b.at) / 60000) * RATE_PER_MIN);
+  b.at = now;
+  if (b.tokens < 1) return res.status(429).json({ error: "rate limited" });
+  b.tokens -= 1;
+  buckets.set(ip, b);
+  next();
+}
+
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.disable("x-powered-by");
+app.use(cors({ origin: CORS_ORIGIN }));
+app.use(express.json({ limit: "16kb" }));
+
+app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.get("/status", async (_req, res) => {
   res.json({
     relayer: wallet.address,
     chainId: CHAIN_ID,
+    network: deployment.network,
     feeBps: Number(FEE_BPS),
-    crossVm: process.env.CROSS_VM === "1",
+    crossVm: crossVmEnabled(),
     pools: deployment.contracts.pools,
   });
 });
 
-app.post("/withdraw", async (req, res) => {
+app.post("/withdraw", rateLimit, async (req, res) => {
+  let lockKey = null;
   try {
-    const { poolAddress, a, b, c, root, nullifierHash, recipient } = req.body;
-    if (!poolAddress || !a || !b || !c || root == null || nullifierHash == null || !recipient) {
-      return res.status(400).json({ error: "missing fields" });
-    }
+    const body = req.body || {};
+    if (!ethers.isAddress(body.poolAddress)) throw new ClientError(400, "invalid poolAddress");
+    const poolAddress = ethers.getAddress(body.poolAddress);
+    if (!ALLOWED_POOLS.has(poolAddress)) throw new ClientError(400, "unknown pool");
+    if (!ethers.isAddress(body.recipient)) throw new ClientError(400, "invalid recipient");
+    const recipient = ethers.getAddress(body.recipient);
+
+    const a = point(body.a, 2, "a").map((x) => fieldStr(x, BASE, "a"));
+    const bRows = point(body.b, 2, "b");
+    const b = bRows.map((row) => point(row, 2, "b").map((x) => fieldStr(x, BASE, "b")));
+    const c = point(body.c, 2, "c").map((x) => fieldStr(x, BASE, "c"));
+    const root = fieldStr(body.root, FIELD, "root");
+    const nullifierHash = fieldStr(body.nullifierHash, FIELD, "nullifierHash");
+
+    if (inFlight.has(nullifierHash)) throw new ClientError(409, "withdrawal already in progress");
+    inFlight.add(nullifierHash);
+    lockKey = nullifierHash;
+
     const pool = new ethers.Contract(poolAddress, POOL_ABI, wallet);
     const denom = await pool.denomination();
     const fee = (denom * FEE_BPS) / 10000n;
 
-    // Guard 1: note not already spent; root is fresh.
-    if (await pool.isSpent(nullifierHash)) return res.status(409).json({ error: "note already spent" });
-    if (!(await pool.isKnownRoot(root))) return res.status(409).json({ error: "unknown/stale root" });
+    if (await pool.isSpent(nullifierHash)) throw new ClientError(409, "note already spent");
+    if (!(await pool.isKnownRoot(root))) throw new ClientError(409, "unknown or stale root");
 
-    const publicSignals = [
-      BigInt(root).toString(),
-      BigInt(nullifierHash).toString(),
-      BigInt(recipient).toString(),
-      BigInt(wallet.address).toString(), // relayer == us; proof is bound to this
-      fee.toString(),
-      "0",
-    ];
+    const publicSignals = [root, nullifierHash, BigInt(recipient).toString(), BigInt(wallet.address).toString(), fee.toString(), "0"];
 
-    // Guard 2: cheap local proof check before spending gas.
+    // cheap local pre-check before spending any gas
     const snarkProof = {
       pi_a: [a[0], a[1], "1"],
       pi_b: [[b[0][1], b[0][0]], [b[1][1], b[1][0]], ["1", "0"]],
@@ -87,20 +147,33 @@ app.post("/withdraw", async (req, res) => {
       protocol: "groth16",
       curve: "bn128",
     };
-    const ok = await snarkjs.groth16.verify(vkey, publicSignals, snarkProof);
-    if (!ok) return res.status(400).json({ error: "invalid proof" });
+    if (!(await snarkjs.groth16.verify(vkey, publicSignals, snarkProof))) {
+      throw new ClientError(400, "invalid proof (wrong relayer/fee? fetch /status first)");
+    }
 
-    // Optional: gate on a WASM-VM verification (cross-VM demo).
-    await maybeCrossVmAttest({ a, b, c, publicSignals, deployment, evmWallet: wallet });
+    // fail-closed WASM verification when the pool is wired to the coprocessor bridge
+    if (deployment.verifierMode === "coprocessor") {
+      if (!crossVmEnabled()) throw new Error("coprocessor deployment requires CROSS_VM=1 on the relayer");
+      await crossVmAttest({ a, b, c, publicSignals, bridgeAddress: deployment.contracts.withdrawVerifier, evmWallet: wallet });
+    }
 
-    // Submit the withdrawal; relayer pays gas, recipient gets denom - fee.
-    const tx = await pool.withdraw(a, b, c, root, nullifierHash, recipient, wallet.address, fee, 0);
+    const args = [a, b, c, root, nullifierHash, recipient, wallet.address, fee, 0];
+    const gas = await pool.withdraw.estimateGas(...args);
+    const { gasPrice } = await provider.getFeeData();
+    const cost = gas * (gasPrice ?? 0n);
+    if (ENFORCE_PROFIT && cost > fee) throw new ClientError(503, "fee does not cover gas right now; retry later");
+
+    const tx = await pool.withdraw(...args, { gasLimit: (gas * 12n) / 10n });
     const receipt = await tx.wait();
+    console.log(`[relay] ${receipt.hash} pool=${poolAddress} fee=${fee} gasCost=${cost}`);
     res.json({ txHash: receipt.hash, fee: fee.toString(), recipient });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: String(e?.message || e) });
+    if (e instanceof ClientError) return res.status(e.status).json({ error: e.message });
+    console.error("[relay] internal error:", e);
+    res.status(500).json({ error: "relay failed" });
+  } finally {
+    if (lockKey) inFlight.delete(lockKey);
   }
 });
 
-app.listen(PORT, () => console.log(`Umbra relayer on :${PORT} as ${wallet.address}`));
+app.listen(PORT, () => console.log(`Umbra relayer on :${PORT} as ${wallet.address} (${deployment.network})`));

@@ -15,14 +15,22 @@ contracts/lib/
 target/
 coprocessor/target/
 
-# circom / snarkjs build artifacts (regenerated via `make zk`)
+# circom / snarkjs intermediate build output (regenerated via `make zk`)
 circuits/build/
-*.zkey
 *.r1cs
 *.wtns
 *.ptau
-!circuits/powersOfTau*_final.ptau.KEEP
+# Proving keys are NOT ignored in sdk/artifacts: they must be versioned together with the
+# verifier contracts generated from them (audit H-03). Integrity: sdk/artifacts/MANIFEST.json
+*.zkey
+!sdk/artifacts/*.zkey
+
+# frontend copy of the artifacts is synced from sdk/artifacts at dev/build time
+frontend/public/zk/
 
 # misc
 .DS_Store
 *.log
+
+# local E2E deployment output
+deployments/local.json
