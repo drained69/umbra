@@ -1,0 +1,17 @@
+{
+  "name": "umbra-circuits",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Umbra zero-knowledge circuits (circom) for Portaldot V3 shielded pools",
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "prove:example": "node scripts/prove_example.js"
+  },
+  "dependencies": {
+    "circomlib": "2.0.5",
+    "poseidon-lite": "^0.3.0"
+  },
+  "devDependencies": {
+    "snarkjs": "0.7.6"
+  }
+}

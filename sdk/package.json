@@ -1,0 +1,20 @@
+{
+  "name": "@umbra/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Umbra client SDK: shielded notes, Merkle paths, Groth16 proofs, viewing keys",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/ciphers": "1.0.0",
+    "@noble/hashes": "1.5.0",
+    "ethers": "6.13.2",
+    "poseidon-lite": "0.3.0",
+    "snarkjs": "0.7.6"
+  },
+  "devDependencies": {
+    "typescript": "5.5.4"
+  }
+}
