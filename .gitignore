@@ -1,0 +1,28 @@
+# node
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# rust / ink!
+target/
+coprocessor/target/
+
+# circom / snarkjs build artifacts (regenerated via `make zk`)
+circuits/build/
+*.zkey
+*.r1cs
+*.wtns
+*.ptau
+!circuits/powersOfTau*_final.ptau.KEEP
+
+# misc
+.DS_Store
+*.log
