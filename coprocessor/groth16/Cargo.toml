@@ -1,0 +1,20 @@
+[package]
+name = "umbra_groth16"
+version = "0.2.0"
+edition = "2021"
+publish = false
+description = "no_std BN254 Groth16 verifier taking EVM-encoded (big-endian) proofs — Umbra's WASM coprocessor core"
+license = "MIT"
+
+[dependencies]
+ark-bn254 = { version = "0.4.0", default-features = false, features = ["curve"] }
+ark-groth16 = { version = "0.4.0", default-features = false }
+ark-ec = { version = "0.4.2", default-features = false }
+ark-ff = { version = "0.4.2", default-features = false }
+
+[dev-dependencies]
+serde_json = "1"
+
+[features]
+default = ["std"]
+std = ["ark-bn254/std", "ark-groth16/std", "ark-ec/std", "ark-ff/std"]

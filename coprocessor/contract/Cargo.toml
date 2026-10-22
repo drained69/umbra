@@ -1,0 +1,21 @@
+[package]
+name = "umbra_coprocessor"
+version = "0.2.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[dependencies]
+ink = { version = "5.0.0", default-features = false }
+umbra_groth16 = { path = "../groth16", default-features = false }
+
+[lib]
+path = "lib.rs"
+
+[features]
+default = ["std"]
+std = ["ink/std", "umbra_groth16/std"]
+ink-as-dependency = []
+
+# Build the deployable artifact: `cargo contract build --release` (needs cargo-contract).
+# Output: target/ink/umbra_coprocessor.contract
