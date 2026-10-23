@@ -6,12 +6,14 @@ import {
   scanMemos,
   type Memo,
 } from "@umbra/sdk";
-import { formatPOT } from "../lib/chain";
+import { format } from "../lib/chain";
 
 interface Props {
   client: UmbraPoolClient;
   myViewingKey: Uint8Array | null;
   denomLabel: string;
+  decimals: number;
+  symbol: string;
 }
 
 interface Row {
@@ -26,7 +28,7 @@ interface Row {
  * READ-ONLY viewing key. Handing it to an auditor reveals deposits and whether each was
  * later withdrawn — but grants no ability to move funds (memos carry no spend secrets).
  */
-export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props) {
+export default function AuditorPanel({ client, myViewingKey, denomLabel, decimals, symbol }: Props) {
   const [keyInput, setKeyInput] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [status, setStatus] = useState<{ t: "ok" | "err" | "info"; m: string } | null>(null);
@@ -60,7 +62,7 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props
     <div className="card">
       <h2>Viewing key &amp; selective disclosure</h2>
       <p className="hint">
-        Compliance without surveillance. Reveal your {denomLabel}-pool history to yourself, or to an
+        Compliance without surveillance. Reveal your {denomLabel} {symbol} pool history to yourself, or to an
         auditor you choose. The key is <b>read-only</b> — it cannot withdraw anything.
       </p>
 
@@ -100,7 +102,7 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props
           <thead>
             <tr>
               <th>Action</th>
-              <th>Amount (tPOT)</th>
+              <th>Amount ({symbol})</th>
               <th>Status</th>
               <th>When</th>
               <th>Commitment</th>
@@ -110,7 +112,7 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel }: Props
             {rows.map((r, i) => (
               <tr key={i}>
                 <td>{r.memo.action}</td>
-                <td>{formatPOT(BigInt(r.memo.denomination))}</td>
+                <td>{format(BigInt(r.memo.denomination), decimals)}</td>
                 <td>{r.spent ? "withdrawn" : "shielded"}</td>
                 <td>{new Date(r.memo.ts).toLocaleString()}</td>
                 <td className="mono">0x{r.memo.commitment.slice(0, 10)}…</td>

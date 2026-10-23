@@ -14,6 +14,8 @@
   "dependencies": {
     "@noble/ciphers": "1.0.0",
     "@noble/hashes": "1.5.0",
+    "@polkadot/api": "17.0.2",
+    "@polkadot/extension-dapp": "0.64.1",
     "ethers": "6.13.2",
     "poseidon-lite": "0.3.0",
     "react": "18.3.1",

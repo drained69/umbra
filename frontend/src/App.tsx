@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { UmbraPoolClient, deriveViewingKey } from "@umbra/sdk";
-import { connectWallet, DEPLOYMENT, parsePOT, short } from "./lib/chain";
-import DepositPanel from "./components/DepositPanel";
+import { UmbraPoolClient, UmbraNative, exportViewingKey, type Note } from "@umbra/sdk";
+import { DEPLOYMENT, assets, format, getApi, readProvider, short, blockLink, PORTALDOT_EXTENSION_URL } from "./lib/chain";
+import { connectEvm, connectNative, getViewingKey, listNativeAccounts, restoreViewingKey, type NativeAccount, type Wallet } from "./lib/wallet";
+import DepositPanel, { type TxRef } from "./components/DepositPanel";
 import WithdrawPanel from "./components/WithdrawPanel";
 import AuditorPanel from "./components/AuditorPanel";
 
@@ -10,33 +11,87 @@ type Tab = "deposit" | "withdraw" | "auditor";
 const RELAYER_URL = (import.meta as any).env?.VITE_RELAYER_URL || "http://localhost:8787";
 
 export default function App() {
-  const [address, setAddress] = useState<string | null>(null);
-  const [signer, setSigner] = useState<ethers.Signer | null>(null);
-  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [nativeAccounts, setNativeAccounts] = useState<NativeAccount[] | null>(null);
+  const [connectErr, setConnectErr] = useState<string | null>(null);
+  const [balance, setBalance] = useState<string>("");
   const [tab, setTab] = useState<Tab>("deposit");
   const [viewingKey, setViewingKey] = useState<Uint8Array | null>(null);
 
-  const pools = DEPLOYMENT.contracts.pools as Record<string, string>;
-  const denomLabels = Object.keys(pools);
-  const [denom, setDenom] = useState<string>(denomLabels[0] || "1");
-  const configured = denomLabels.length > 0 && pools[denom] && pools[denom] !== ethers.ZeroAddress;
+  const assetList = useMemo(() => assets(), []);
+  const [assetSym, setAssetSym] = useState(assetList[0]?.symbol ?? "tPOT");
+  const asset = assetList.find((a) => a.symbol === assetSym);
+  const denoms = asset ? Object.keys(asset.pools) : [];
+  const [denom, setDenom] = useState<string>(denoms[0] ?? "");
+  useEffect(() => setDenom(Object.keys(asset?.pools ?? {})[0] ?? ""), [assetSym]);
+  const poolAddr = asset?.pools[denom];
+  const configured = !!poolAddr && poolAddr !== ethers.ZeroAddress;
 
   const client = useMemo(() => {
-    if (!signer || !configured) return null;
-    return new UmbraPoolClient(pools[denom], signer, { deployBlock: (DEPLOYMENT as any).deployBlock ?? 0 });
-  }, [signer, denom, configured]);
+    if (!configured || !asset) return null;
+    const runner = wallet?.kind === "evm" ? wallet.signer : readProvider;
+    return new UmbraPoolClient(poolAddr!, runner, { deployBlock: DEPLOYMENT.deployBlock ?? 0, assetRules: asset.rules });
+  }, [wallet, poolAddr, configured, asset]);
 
-  async function connect() {
-    const w = await connectWallet();
-    setAddress(w.address);
-    setSigner(w.signer);
-    setProvider(w.provider);
+  // balances
+  useEffect(() => {
+    if (!wallet) return;
+    let stop = false;
+    (async () => {
+      if (wallet.kind === "native") {
+        const api = await getApi();
+        const acc: any = await api.query.system.account(wallet.account);
+        if (!stop) setBalance(format(acc.data.free.toBigInt() * 10n ** 4n, 18));
+      } else {
+        const b = await readProvider.getBalance(wallet.address);
+        if (!stop) setBalance(format(b, 18));
+      }
+    })().catch(() => {});
+    return () => {
+      stop = true;
+    };
+  }, [wallet]);
+
+  async function pickNative() {
+    setConnectErr(null);
+    try {
+      const { extensions, accounts } = await listNativeAccounts();
+      if (!extensions.length) throw new Error("No Portaldot Extension found.");
+      if (!accounts.length) throw new Error("The extension has no accounts (or access was denied).");
+      setNativeAccounts(accounts);
+      if (accounts.length === 1) await chooseNative(accounts[0]);
+    } catch (e: any) {
+      setConnectErr(e.message);
+    }
+  }
+  async function chooseNative(a: NativeAccount) {
+    const w = await connectNative(a);
+    setWallet(w);
+    setNativeAccounts(null);
+    setViewingKey(await getViewingKey(w));
+  }
+  async function pickEvm() {
+    setConnectErr(null);
+    try {
+      setWallet(await connectEvm());
+    } catch (e: any) {
+      setConnectErr(e.message);
+    }
   }
 
-  async function makeViewingKey() {
-    if (!signer) return;
-    const vk = await deriveViewingKey((m) => signer.signMessage(m), DEPLOYMENT.chainId);
-    setViewingKey(vk);
+  /** Deposit through whichever wallet is connected; returns refs to show the user. */
+  async function deposit(note: Note, memo: Uint8Array): Promise<TxRef[]> {
+    if (!client || !wallet) throw new Error("connect a wallet first");
+    if (wallet.kind === "evm") {
+      const hash = await client.deposit(note, memo);
+      return [{ label: `EVM tx ${short(hash)}` }];
+    }
+    const api = await getApi();
+    const res = await new UmbraNative(api, wallet.account, { signer: wallet.signer }).deposit(client, note, memo);
+    return res.map((r, i) => ({
+      label: `${res.length > 1 && i === 0 ? "approval" : "deposit"} in block ${short(r.blockHash)}`,
+      href: blockLink(r.blockHash),
+    }));
   }
 
   return (
@@ -46,72 +101,139 @@ export default function App() {
           <div className="logo" />
           <div>
             <h1>Umbra</h1>
-            <div className="sub">Confidential tPOT · ZK-verified in Portaldot's WASM coprocessor</div>
+            <div className="sub">Confidential POT &amp; Portaldot assets · ZK proofs · native &amp; EVM wallets</div>
           </div>
         </div>
-        <div className="row" style={{ gap: 10 }}>
-          <span className="pill">Portaldot V3 · chain {DEPLOYMENT.chainId}</span>
-          {address ? (
-            <span className="pill">{short(address)}</span>
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <span className="pill">{DEPLOYMENT.network}</span>
+          {wallet ? (
+            <span className="pill" title={wallet.kind === "native" ? wallet.account : wallet.address}>
+              {wallet.kind === "native" ? `Portaldot · ${wallet.label.length > 20 ? short(wallet.label) : wallet.label}` : `EVM · ${short(wallet.address)}`}
+              {balance && ` · ${Number(balance).toFixed(2)} tPOT`}
+            </span>
           ) : (
-            <button className="primary" onClick={connect}>
-              Connect wallet
-            </button>
+            <>
+              <button className="primary" onClick={pickNative}>
+                Connect Portaldot Extension
+              </button>
+              <button className="ghost" onClick={pickEvm}>
+                EVM wallet
+              </button>
+            </>
           )}
         </div>
       </header>
 
-      {!configured && (
-        <div className="status info">
-          No pools configured yet. Run <span className="mono">cd scripts &amp;&amp; npm i &amp;&amp; npm run deploy</span>{" "}
-          to deploy to Portaldot V3 testnet — the app reads addresses from{" "}
-          <span className="mono">frontend/src/config/deployment.json</span> automatically.
+      {connectErr && (
+        <div className="status err">
+          {connectErr}{" "}
+          {/Portaldot Extension/.test(connectErr) && (
+            <a href={PORTALDOT_EXTENSION_URL} target="_blank" rel="noreferrer">
+              Install it
+            </a>
+          )}
         </div>
       )}
 
-      {address && (
+      {nativeAccounts && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h2>Choose an account</h2>
+          <p className="hint">Your 5… account calls Umbra's contracts directly — no EVM wallet or 0x key needed.</p>
+          {nativeAccounts.map((a) => (
+            <button
+              key={a.address}
+              className="ghost"
+              style={{ display: "block", width: "100%", textAlign: "left", marginTop: 6 }}
+              onClick={() => chooseNative(a)}
+            >
+              <b>{a.name || "account"}</b> <span className="mono">{short(a.address)}</span> <span className="pill">{a.source}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!configured && (
+        <div className="status info">
+          No pools deployed for this network yet. Run <span className="mono">make deploy</span> — the app reads addresses
+          from <span className="mono">frontend/src/config/deployment.json</span>.
+        </div>
+      )}
+
+      {wallet && asset && (
         <>
           <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
             <div className="denoms">
-              {denomLabels.map((d) => (
-                <div key={d} className={`chip ${d === denom ? "active" : ""}`} onClick={() => setDenom(d)}>
-                  {d} tPOT
+              {assetList.map((a) => (
+                <div key={a.symbol} className={`chip ${a.symbol === assetSym ? "active" : ""}`} onClick={() => setAssetSym(a.symbol)}>
+                  {a.symbol}
+                  {a.assetId !== null && <span style={{ opacity: 0.6 }}> #{a.assetId}</span>}
                 </div>
               ))}
             </div>
-            <button className="ghost" onClick={makeViewingKey}>
-              {viewingKey ? "✓ viewing key ready" : "Derive viewing key"}
-            </button>
+            <div className="denoms">
+              {denoms.map((d) => (
+                <div key={d} className={`chip ${d === denom ? "active" : ""}`} onClick={() => setDenom(d)}>
+                  {d} {asset.symbol}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="tabs">
-            <button className={tab === "deposit" ? "active" : ""} onClick={() => setTab("deposit")}>
-              Deposit
-            </button>
-            <button className={tab === "withdraw" ? "active" : ""} onClick={() => setTab("withdraw")}>
-              Withdraw
-            </button>
-            <button className={tab === "auditor" ? "active" : ""} onClick={() => setTab("auditor")}>
-              Viewing key / Audit
-            </button>
+            {(["deposit", "withdraw", "auditor"] as Tab[]).map((t) => (
+              <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+                {t === "auditor" ? "Viewing key / Audit" : t[0].toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+            {wallet.kind === "native" && viewingKey && (
+              <button
+                className="ghost"
+                onClick={() => navigator.clipboard.writeText(exportViewingKey(viewingKey))}
+                title="Stored only in this browser — back it up"
+              >
+                Export viewing key
+              </button>
+            )}
+            {wallet.kind === "native" && (
+              <button
+                className="ghost"
+                onClick={() => {
+                  const v = prompt("Paste a previously exported viewing key (umbra-vk-…)");
+                  if (v) setViewingKey(restoreViewingKey(wallet, v));
+                }}
+              >
+                Restore viewing key
+              </button>
+            )}
+            {wallet.kind === "evm" && !viewingKey && (
+              <button className="ghost" onClick={async () => setViewingKey(await getViewingKey(wallet))}>
+                Derive viewing key
+              </button>
+            )}
           </div>
 
           {client && tab === "deposit" && (
-            <DepositPanel client={client} denomLabel={denom} denomWei={parsePOT(denom)} viewingKey={viewingKey} />
+            <DepositPanel
+              asset={asset}
+              denomLabel={denom}
+              denomWei={ethers.parseUnits(denom, asset.decimals)}
+              viewingKey={viewingKey}
+              deposit={deposit}
+              wallet={wallet}
+            />
           )}
-          {client && signer && tab === "withdraw" && (
-            <WithdrawPanel client={client} signer={signer} relayerUrl={RELAYER_URL} />
-          )}
+          {client && tab === "withdraw" && <WithdrawPanel client={client} wallet={wallet} asset={asset} relayerUrl={RELAYER_URL} />}
           {client && tab === "auditor" && (
-            <AuditorPanel client={client} myViewingKey={viewingKey} denomLabel={denom} />
+            <AuditorPanel client={client} myViewingKey={viewingKey} denomLabel={denom} decimals={asset.decimals} symbol={asset.symbol} />
           )}
         </>
       )}
 
       <div className="footer">
-        Umbra · Portaldot Hacker House 2026 · EVM asset layer + WASM ZK coprocessor on one chain.
+        Umbra · Portaldot V3 · EVM contracts called natively through pallet-revive · ZK verified on-chain or in WASM.
         <br />
-        On-chain amounts use {DEPLOYMENT.decimals}-decimal EVM units (native POT is 14-dec, scaled ×10⁴).
+        tPOT amounts use 18-decimal EVM units (native POT is 14-dec, scaled ×10⁴). Each withdrawal locks a ~3.84 tPOT storage
+        slot on Portaldot, covered by the relayer fee.
       </div>
     </div>
   );
