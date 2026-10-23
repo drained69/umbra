@@ -3,7 +3,8 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {UmbraShieldedPool} from "../src/UmbraShieldedPool.sol";
-import {MockHasher} from "./mocks/MockHasher.sol";
+import {IHasher} from "../src/interfaces/IHasher.sol";
+import {PoseidonDeployer} from "./helpers/PoseidonDeployer.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
 
 /// @notice Join-split pool state machine: deposit / withdraw / transfer, double-spend,
@@ -11,7 +12,7 @@ import {MockVerifier} from "./mocks/MockVerifier.sol";
 ///         hash/verifier; ZK soundness is covered by the circuit + TransactionVerifier test.
 contract UmbraShieldedPoolTest is Test {
     UmbraShieldedPool pool;
-    MockHasher hasher;
+    IHasher hasher;
     MockVerifier verifier;
     uint256 constant FIELD =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
@@ -22,7 +23,7 @@ contract UmbraShieldedPoolTest is Test {
     uint256 nn; // nullifier/commitment nonce
 
     function setUp() public {
-        hasher = new MockHasher();
+        hasher = PoseidonDeployer.deploy(vm);
         verifier = new MockVerifier();
         pool = new UmbraShieldedPool(verifier, hasher, 20);
     }

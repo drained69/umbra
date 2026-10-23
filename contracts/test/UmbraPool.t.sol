@@ -3,8 +3,10 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {UmbraPool} from "../src/UmbraPool.sol";
+import {UmbraPoolBase} from "../src/UmbraPoolBase.sol";
 import {UmbraPoolFactory} from "../src/UmbraPoolFactory.sol";
-import {MockHasher} from "./mocks/MockHasher.sol";
+import {IHasher} from "../src/interfaces/IHasher.sol";
+import {PoseidonDeployer} from "./helpers/PoseidonDeployer.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
 
 /// @notice Exercises the pool's privacy state machine (Merkle insert, root history,
@@ -13,7 +15,7 @@ import {MockVerifier} from "./mocks/MockVerifier.sol";
 ///         tests + the on-chain/WASM Groth16 verifier; this proves the EVM asset layer.
 contract UmbraPoolTest is Test {
     UmbraPool pool;
-    MockHasher hasher;
+    IHasher hasher;
     MockVerifier verifier;
 
     uint256 constant DENOM = 10 ether; // 10 tPOT: EVM layer uses 18-decimal units
@@ -25,7 +27,7 @@ contract UmbraPoolTest is Test {
     uint256[2] c;
 
     function setUp() public {
-        hasher = new MockHasher();
+        hasher = PoseidonDeployer.deploy(vm);
         verifier = new MockVerifier();
         pool = new UmbraPool(verifier, hasher, DENOM, LEVELS);
     }
@@ -38,7 +40,7 @@ contract UmbraPoolTest is Test {
     function test_DepositRequiresExactDenomination() public {
         uint256 cmt = _commitment(1);
         vm.deal(address(this), 100 ether);
-        vm.expectRevert(UmbraPool.InvalidDenomination.selector);
+        vm.expectRevert(UmbraPoolBase.InvalidDenomination.selector);
         pool.deposit{value: 9 ether}(cmt, "");
     }
 
@@ -47,17 +49,27 @@ contract UmbraPoolTest is Test {
         uint256 cmt = _commitment(2);
         vm.deal(address(this), DENOM);
         pool.deposit{value: DENOM}(cmt, "");
-        assertTrue(pool.commitments(cmt));
+        assertEq(pool.nextIndex(), 1);
         assertTrue(pool.getLastRoot() != rootBefore, "root must change");
         assertTrue(pool.isKnownRoot(pool.getLastRoot()));
     }
 
-    function test_DepositRejectsDuplicateCommitment() public {
+    /// The duplicate-commitment check was removed to save a storage slot per deposit on
+    /// Portaldot. Safety property that makes this OK: one secret => one nullifier => at most
+    /// one withdrawal, no matter how many times its commitment was inserted.
+    function test_DuplicateCommitmentStillWithdrawsOnlyOnce() public {
         uint256 cmt = _commitment(3);
         vm.deal(address(this), DENOM * 2);
         pool.deposit{value: DENOM}(cmt, "");
-        vm.expectRevert(UmbraPool.CommitmentExists.selector);
-        pool.deposit{value: DENOM}(cmt, "");
+        pool.deposit{value: DENOM}(cmt, ""); // e.g. a copier front-running the same commitment
+        assertEq(pool.nextIndex(), 2);
+        uint256 root = pool.getLastRoot();
+        address payable r = payable(makeAddr("dup"));
+        uint256 nh = _commitment(300);
+        pool.withdraw(a, b, c, root, nh, r, r, 0, 0);
+        vm.expectRevert(UmbraPoolBase.NoteAlreadySpent.selector);
+        pool.withdraw(a, b, c, root, nh, r, r, 0, 0);
+        assertEq(r.balance, DENOM, "only one withdrawal for the duplicated note");
     }
 
     function test_WithdrawHappyPathPaysRecipient() public {
@@ -93,14 +105,14 @@ contract UmbraPoolTest is Test {
         uint256 nh = _commitment(97);
 
         pool.withdraw(a, b, c, root, nh, recipient, recipient, 0, 0);
-        vm.expectRevert(UmbraPool.NoteAlreadySpent.selector);
+        vm.expectRevert(UmbraPoolBase.NoteAlreadySpent.selector);
         pool.withdraw(a, b, c, root, nh, recipient, recipient, 0, 0);
     }
 
     function test_WithdrawRejectsUnknownRoot() public {
         _deposit(_commitment(13));
         address payable recipient = payable(makeAddr("r3"));
-        vm.expectRevert(UmbraPool.UnknownRoot.selector);
+        vm.expectRevert(UmbraPoolBase.UnknownRoot.selector);
         pool.withdraw(a, b, c, uint256(0xdead), _commitment(96), recipient, recipient, 0, 0);
     }
 
@@ -109,7 +121,7 @@ contract UmbraPoolTest is Test {
         uint256 root = pool.getLastRoot();
         address payable recipient = payable(makeAddr("r4"));
         verifier.setShouldVerify(false);
-        vm.expectRevert(UmbraPool.InvalidProof.selector);
+        vm.expectRevert(UmbraPoolBase.InvalidProof.selector);
         pool.withdraw(a, b, c, root, _commitment(95), recipient, recipient, 0, 0);
     }
 
@@ -117,7 +129,7 @@ contract UmbraPoolTest is Test {
         _deposit(_commitment(15));
         uint256 root = pool.getLastRoot();
         address payable recipient = payable(makeAddr("r5"));
-        vm.expectRevert(UmbraPool.FeeExceedsDenomination.selector);
+        vm.expectRevert(UmbraPoolBase.FeeExceedsDenomination.selector);
         pool.withdraw(a, b, c, root, _commitment(94), recipient, recipient, DENOM + 1, 0);
     }
 
@@ -144,7 +156,7 @@ contract UmbraPoolTest is Test {
 
 contract UmbraPoolFactoryTest is Test {
     function test_FactoryCreatesAndRegistersPools() public {
-        MockHasher hasher = new MockHasher();
+        IHasher hasher = PoseidonDeployer.deploy(vm);
         MockVerifier verifier = new MockVerifier();
         UmbraPoolFactory factory = new UmbraPoolFactory(verifier, hasher, 20);
 
@@ -153,7 +165,7 @@ contract UmbraPoolFactoryTest is Test {
 
         assertEq(factory.poolForDenomination(1 ether), p1);
         assertEq(factory.poolForDenomination(10 ether), p10);
-        assertEq(factory.allDenominations().length, 2);
+        assertEq(factory.allPools().length, 2);
 
         vm.expectRevert(UmbraPoolFactory.PoolExists.selector);
         factory.createPool(1 ether);

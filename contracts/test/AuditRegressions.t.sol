@@ -3,10 +3,12 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {UmbraPool} from "../src/UmbraPool.sol";
+import {UmbraPoolBase} from "../src/UmbraPoolBase.sol";
 import {UmbraShieldedPool} from "../src/UmbraShieldedPool.sol";
 import {UmbraCoprocessorBridge} from "../src/UmbraCoprocessorBridge.sol";
 import {MerkleTreeWithHistory} from "../src/MerkleTreeWithHistory.sol";
-import {MockHasher} from "./mocks/MockHasher.sol";
+import {IHasher} from "../src/interfaces/IHasher.sol";
+import {PoseidonDeployer} from "./helpers/PoseidonDeployer.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
 
 /// @notice One regression test per contract-level audit finding (see AUDIT_REPORT.md).
@@ -14,11 +16,11 @@ contract AuditRegressionsTest is Test {
     uint256 constant FIELD =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
-    MockHasher hasher;
+    IHasher hasher;
     MockVerifier verifier;
 
     function setUp() public {
-        hasher = new MockHasher();
+        hasher = PoseidonDeployer.deploy(vm);
         verifier = new MockVerifier();
     }
 
@@ -39,7 +41,7 @@ contract AuditRegressionsTest is Test {
         uint256[2][2] memory b;
         uint256[2] memory c;
         bytes memory data = abi.encodeCall(
-            UmbraPool.withdraw, (a, b, c, pool.getLastRoot(), 7, payable(address(0xBEEF)), payable(address(0xBEEF)), 0, 0)
+            UmbraPoolBase.withdraw, (a, b, c, pool.getLastRoot(), 7, payable(address(0xBEEF)), payable(address(0xBEEF)), 0, 0)
         );
         (bool ok,) = address(pool).call{value: 1 wei}(data);
         assertFalse(ok, "sending value to withdraw must revert");
