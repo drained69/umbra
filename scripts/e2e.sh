@@ -22,7 +22,7 @@ until curl -s -X POST -H 'content-type: application/json' \
 
 echo "==> build + deploy (local)"
 (cd contracts && forge build >/dev/null)
-(cd scripts && NETWORK=local PRIVATE_KEY=$KEY0 PORTALDOT_RPC="http://127.0.0.1:$PORT_RPC" node deploy.js)
+(cd scripts && NETWORK=local DENOMINATIONS=1,10,100 PRIVATE_KEY=$KEY0 PORTALDOT_RPC="http://127.0.0.1:$PORT_RPC" node deploy.js)
 
 echo "==> SDK end-to-end"
 (cd sdk && E2E_RPC="http://127.0.0.1:$PORT_RPC" npx --yes tsx@4.19.1 test/e2e.ts)

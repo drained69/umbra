@@ -4,7 +4,7 @@
 
 import { ethers } from "ethers";
 import { bytesToHex } from "@noble/hashes/utils";
-import { POOL_ABI } from "./abi";
+import { POOL_ABI, ERC20_ABI } from "./abi";
 import { Note, commitment as noteCommitment, nullifierHash } from "./note";
 import { MerkleTree } from "./merkle";
 import { TREE_LEVELS } from "./field";
@@ -24,6 +24,12 @@ export interface PoolClientOptions {
   deployBlock?: number;
   /** Max block range per eth_getLogs call (RPCs cap this). Auto-halves on error. */
   chunkSize?: number;
+  /**
+   * pallet-assets rules for token pools (from the deployment file). Non-"sufficient" assets
+   * (e.g. pUSD) can only be received by accounts that already exist natively (>= 0.1 tPOT),
+   * and every transfer must be >= the asset's minBalance.
+   */
+  assetRules?: { sufficient: boolean; minBalance: bigint };
 }
 
 export class UmbraPoolClient {
@@ -32,6 +38,7 @@ export class UmbraPoolClient {
   private contract: ethers.Contract;
   private deployBlock: number;
   private chunkSize: number;
+  private assetRules?: { sufficient: boolean; minBalance: bigint };
 
   constructor(address: string, runner: ethers.ContractRunner, opts: PoolClientOptions = {}) {
     this.address = address;
@@ -39,6 +46,7 @@ export class UmbraPoolClient {
     this.contract = new ethers.Contract(address, POOL_ABI, runner);
     this.deployBlock = opts.deployBlock ?? 0;
     this.chunkSize = opts.chunkSize ?? 5_000;
+    this.assetRules = opts.assetRules;
   }
 
   private get provider(): ethers.Provider {
@@ -51,15 +59,37 @@ export class UmbraPoolClient {
     return this.contract.denomination();
   }
 
-  /** Shield one note. `encryptedMemo` enables viewing-key reconstruction later. */
+  /** address(0) for native tPOT pools, otherwise the ERC-20 (e.g. a Portaldot asset precompile). */
+  async token(): Promise<string> {
+    return this.contract.token();
+  }
+
+  /** ABI-encoded `deposit(commitment, memo)` calldata — used by native (revive.call) deposits. */
+  depositCalldata(note: Note, encryptedMemo: Uint8Array = new Uint8Array()): string {
+    return this.contract.interface.encodeFunctionData("deposit", [noteCommitment(note), "0x" + bytesToHex(encryptedMemo)]);
+  }
+
+  /**
+   * Shield one note from an EVM wallet. Native pools send `denomination` as value; token
+   * pools first approve exactly `denomination` if the allowance is short.
+   */
   async deposit(note: Note, encryptedMemo: Uint8Array = new Uint8Array()): Promise<string> {
     const denom = await this.denomination();
     if (note.denomination !== denom) throw new Error("note denomination does not match this pool");
-    const cmt = noteCommitment(note);
+    const token = await this.token();
     const memoHex = "0x" + bytesToHex(encryptedMemo);
-    const tx = await (this.contract as any).deposit(cmt, memoHex, { value: denom });
-    const r = await tx.wait();
-    return r.hash;
+    if (token === ethers.ZeroAddress) {
+      const tx = await (this.contract as any).deposit(noteCommitment(note), memoHex, { value: denom });
+      return (await tx.wait()).hash;
+    }
+    const signer = this.runner as ethers.Signer;
+    const erc20 = new ethers.Contract(token, ERC20_ABI, signer);
+    const owner = await signer.getAddress();
+    if ((await erc20.allowance(owner, this.address)) < denom) {
+      await (await erc20.approve(this.address, denom)).wait();
+    }
+    const tx = await (this.contract as any).deposit(noteCommitment(note), memoHex);
+    return (await tx.wait()).hash;
   }
 
   /**
@@ -127,15 +157,31 @@ export class UmbraPoolClient {
   }
 
   /**
-   * Fail fast (audit L-03) if the payout would be below the existential deposit for a
-   * recipient account that doesn't exist yet — the chain would reject the transfer.
+   * Fail fast if the chain would reject the payout (audit L-03), checked per pool type:
+   *  - tPOT pools: a brand-new recipient needs >= 0.1 tPOT (existential deposit).
+   *  - asset pools: amounts must be >= the asset's minBalance, and for non-sufficient assets
+   *    (pUSD) the recipient must already exist natively. Privacy-preserving fix: withdraw a
+   *    tPOT note to the fresh address first (also unlinkable), then the asset note.
    */
-  async assertPayoutCreatesAccount(recipient: string, payout: bigint): Promise<void> {
-    if (payout >= EXISTENTIAL_DEPOSIT_WEI) return;
+  async assertRecipientCanReceive(recipient: string, payout: bigint, fee = 0n, relayer?: string): Promise<void> {
+    const token = await this.token();
     const bal = await this.provider.getBalance(recipient);
-    if (bal === 0n) {
-      throw new Error("payout is below the 0.1 tPOT existential deposit for a brand-new recipient");
+    if (token === ethers.ZeroAddress) {
+      if (payout < EXISTENTIAL_DEPOSIT_WEI && bal === 0n) {
+        throw new Error("payout is below the 0.1 tPOT existential deposit for a brand-new recipient");
+      }
+      return;
     }
+    const rules = this.assetRules;
+    if (!rules) return; // generic ERC-20 (no pallet-assets rules known)
+    if (payout < rules.minBalance) throw new Error("payout is below the asset's minimum balance");
+    if (fee > 0n && fee < rules.minBalance) throw new Error("relayer fee is below the asset's minimum balance");
+    if (!rules.sufficient && bal === 0n) {
+      throw new Error(
+        "recipient has no Portaldot account yet, so it can't hold this asset. Withdraw a tPOT note to it first (stays unlinkable), then this one."
+      );
+    }
+    void relayer;
   }
 
   /** Produce a withdrawal proof bound to recipient/relayer/fee. */
@@ -149,7 +195,7 @@ export class UmbraPoolClient {
     if (!ethers.isAddress(recipient) || !ethers.isAddress(relayer)) throw new Error("invalid address");
     const denom = await this.denomination();
     if (fee > denom) throw new Error("fee exceeds denomination");
-    await this.assertPayoutCreatesAccount(recipient, denom - fee);
+    await this.assertRecipientCanReceive(recipient, denom - fee, fee, relayer);
     const path = await this.pathForNote(note);
     return generateWithdrawProof({ note, path, recipient, relayer, fee, refund: 0n }, artifacts);
   }

@@ -35,6 +35,17 @@ const PORT = Number(process.env.RELAYER_PORT || 8787);
 const RATE_PER_MIN = Number(process.env.RELAYER_RATE_PER_MIN || 10);
 const ENFORCE_PROFIT = process.env.RELAYER_ENFORCE_PROFIT === "1";
 const CORS_ORIGIN = process.env.RELAYER_CORS_ORIGIN || "*";
+// Fee floor: on Portaldot every relayed withdrawal locks a new nullifier storage slot
+// (~3.84 tPOT, measured on the live runtime) plus gas, paid by the relayer. The quoted fee
+// is max(bps * denomination, floor). Floors are per asset, in whole units.
+const IS_LOCAL = deployment.network === "local-anvil";
+const MIN_FEE_NATIVE = ethers.parseUnits(process.env.RELAYER_MIN_FEE_NATIVE ?? (IS_LOCAL ? "0" : "4"), 18);
+const MIN_FEE_TOKENS = Object.fromEntries(
+  (process.env.RELAYER_MIN_FEE_TOKENS || "")
+    .split(",")
+    .filter(Boolean)
+    .map((kv) => kv.split(":").map((x) => x.trim()))
+);
 
 const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n; // r
 const BASE = 21888242871839275222246405745257275088696311157297823662689037894645226208583n; // p
@@ -51,7 +62,36 @@ const provider = new ethers.JsonRpcProvider(RPC, CHAIN_ID, { staticNetwork: true
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
 // Only pools we deployed can be targeted (prevents gas griefing via arbitrary contracts).
-const ALLOWED_POOLS = new Set(Object.values(deployment.contracts.pools).map((a) => ethers.getAddress(a)));
+const tokenPools = Object.values(deployment.contracts.tokens || {}).flatMap((t) => Object.values(t.pools));
+const ALLOWED_POOLS = new Set([...Object.values(deployment.contracts.pools), ...tokenPools].map((a) => ethers.getAddress(a)));
+
+/** pool address -> { symbol, decimals } for fee floors */
+const POOL_ASSET = new Map();
+for (const a of Object.values(deployment.contracts.pools)) POOL_ASSET.set(ethers.getAddress(a), { symbol: "tPOT", decimals: 18 });
+for (const [symbol, t] of Object.entries(deployment.contracts.tokens || {})) {
+  for (const a of Object.values(t.pools)) POOL_ASSET.set(ethers.getAddress(a), { symbol, decimals: t.decimals });
+}
+
+/** Fee the relayer will bind into proofs for `pool` (denomination in pool units). */
+function feeFor(pool, denom) {
+  const asset = POOL_ASSET.get(pool);
+  const bpsFee = (denom * FEE_BPS) / 10000n;
+  let floor = 0n;
+  if (asset?.symbol === "tPOT") floor = MIN_FEE_NATIVE;
+  else if (asset && MIN_FEE_TOKENS[asset.symbol]) floor = ethers.parseUnits(MIN_FEE_TOKENS[asset.symbol], asset.decimals);
+  const fee = bpsFee > floor ? bpsFee : floor;
+  return fee > denom ? denom : fee;
+}
+
+/** Quotes for every pool, served on /status so clients bind the exact fee into proofs. */
+async function quotes() {
+  const out = {};
+  for (const a of ALLOWED_POOLS) {
+    const denom = await new ethers.Contract(a, ["function denomination() view returns (uint256)"], provider).denomination();
+    out[a] = feeFor(a, denom).toString();
+  }
+  return out;
+}
 const inFlight = new Set(); // nullifierHash strings currently being relayed
 
 class ClientError extends Error {
@@ -106,6 +146,8 @@ app.get("/status", async (_req, res) => {
     feeBps: Number(FEE_BPS),
     crossVm: crossVmEnabled(),
     pools: deployment.contracts.pools,
+    tokens: deployment.contracts.tokens || {},
+    fees: await quotes(), // pool -> exact fee (pool units) to bind into the proof
   });
 });
 
@@ -132,7 +174,7 @@ app.post("/withdraw", rateLimit, async (req, res) => {
 
     const pool = new ethers.Contract(poolAddress, POOL_ABI, wallet);
     const denom = await pool.denomination();
-    const fee = (denom * FEE_BPS) / 10000n;
+    const fee = feeFor(poolAddress, denom);
 
     if (await pool.isSpent(nullifierHash)) throw new ClientError(409, "note already spent");
     if (!(await pool.isKnownRoot(root))) throw new ClientError(409, "unknown or stale root");

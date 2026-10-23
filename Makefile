@@ -1,4 +1,4 @@
-.PHONY: help install test check e2e zk preflight deploy relayer frontend coprocessor coprocessor-test clean
+.PHONY: help install test check e2e live zk preflight estimate measure deploy relayer frontend coprocessor coprocessor-test clean
 
 FORGE_STD_VERSION := v1.17.0
 
@@ -12,6 +12,9 @@ help:
 	@echo "  make e2e               full end-to-end on local Anvil (real deploy + SDK + relayer)"
 	@echo "  make zk                re-run trusted setup -> verifiers + keys + fixtures + MANIFEST"
 	@echo "  make preflight         verify the target network can run Umbra (read-only)"
+	@echo "  make live              live Portaldot integration checks (native accounts, assets; read-only)"
+	@echo "  make estimate          exact deploy cost on the target network (read-only dry-run)"
+	@echo "  make measure           per-operation storage/fee costs on the target network (read-only)"
 	@echo "  make deploy            deploy (NETWORK=testnet by default; needs .env)"
 	@echo "  make relayer           start the gasless withdrawal relayer"
 	@echo "  make frontend          start the dApp (vite dev server)"
@@ -45,6 +48,17 @@ zk:
 
 preflight:
 	cd scripts && npm run preflight
+
+live:
+	cd sdk && npx --yes tsx@4.19.1 test/portaldot_live.ts
+
+estimate:
+	cd contracts && forge build
+	cd scripts && node estimate-deploy.js
+
+measure:
+	cd contracts && forge build
+	cd scripts && node measure-costs.js
 
 deploy: preflight
 	cd contracts && forge build

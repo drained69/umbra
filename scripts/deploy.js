@@ -43,7 +43,21 @@ const CHAIN_ID = Number(
 const DECIMALS = BigInt(process.env.EVM_DECIMALS || net.evmDecimals);
 const LEVELS = Number(process.env.TREE_LEVELS || 20);
 const MODE = (process.env.VERIFIER_MODE || "onchain").toLowerCase();
-const DENOMS = (process.env.DENOMINATIONS || "1,10,100").split(",").map((s) => s.trim());
+const DENOMS = (process.env.DENOMINATIONS || "100,1000").split(",").map((s) => s.trim());
+// Shielded Portaldot assets: "assetId:denom,denom;assetId:denom" in whole tokens.
+// Default shields pUSD (asset 7777) in 100/1000 pUSD pools.
+const TOKEN_POOLS = (process.env.TOKEN_POOLS ?? "7777:100,1000")
+  .split(";")
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((spec) => {
+    const [id, denoms] = spec.split(":");
+    return { assetId: BigInt(id), denoms: denoms.split(",").map((d) => d.trim()) };
+  });
+
+/** Portaldot asset ERC-20 precompile: 0x{assetId:8 hex}{24 zero hex}00010000 (verified live). */
+const assetErc20 = (id) => ethers.getAddress("0x" + id.toString(16).padStart(8, "0") + "0".repeat(24) + "00010000");
+const ERC20_META = ["function decimals() view returns (uint8)", "function symbol() view returns (string)", "function totalSupply() view returns (uint256)"];
 
 function requireEvmAvailable() {
   if (!RPC || !CHAIN_ID) {
@@ -122,6 +136,42 @@ async function main() {
     console.log(`fixed pool ${d} POT: ${pools[d]}`);
   }
 
+  // 3b. Shielded Portaldot assets (ERC-20 precompiles). On `local`, a mock pUSD stands in.
+  const tokens = {};
+  const tokenSpecs = NETWORK === "local" ? [{ local: true, denoms: ["10", "100", "1000"] }] : TOKEN_POOLS;
+  for (const spec of tokenSpecs) {
+    let address, assetId = null;
+    if (spec.local) {
+      const mock = await deploy(wallet, artifact("MockERC20", "MockERC20"), ["Portaldot USD (local mock)", "pUSD", 6, 0]);
+      address = await mock.getAddress();
+      await (await mock.mint(wallet.address, 1_000_000n * 10n ** 6n)).wait();
+    } else {
+      assetId = spec.assetId;
+      address = assetErc20(assetId);
+    }
+    const erc20 = new ethers.Contract(address, ERC20_META, provider);
+    const [decimals, symbol, supply] = await Promise.all([erc20.decimals(), erc20.symbol(), erc20.totalSupply()]);
+    if (supply === 0n && !spec.local) throw new Error(`asset ${assetId} has no supply / no ERC-20 precompile — check TOKEN_POOLS`);
+    const tokenPools = {};
+    for (const d of spec.denoms) {
+      const denom = ethers.parseUnits(d, decimals);
+      await (await factory.createPoolFor(address, denom)).wait();
+      tokenPools[d] = await factory.poolFor(address, denom);
+      console.log(`fixed pool ${d} ${symbol}: ${tokenPools[d]}`);
+    }
+    // pallet-assets rules (who can receive / minimum amounts) straight from the runtime
+    let sufficient = true, minBalance = "1";
+    if (!spec.local) {
+      const { ApiPromise, WsProvider } = await import("@polkadot/api");
+      const api = await ApiPromise.create({ provider: new WsProvider(net.substrateWs), noInitWarn: true });
+      const a = (await api.query.assets.asset(assetId)).unwrap();
+      sufficient = a.isSufficient.isTrue;
+      minBalance = a.minBalance.toString();
+      await api.disconnect();
+    }
+    tokens[symbol] = { assetId: assetId === null ? null : Number(assetId), address, decimals: Number(decimals), sufficient, minBalance, pools: tokenPools };
+  }
+
   // 4. Join-split shielded pool (the shared engine)
   const shielded = await deploy(wallet, artifact("UmbraShieldedPool", "UmbraShieldedPool"), [txVerifier, hasher, LEVELS]);
   const shieldedAddr = await shielded.getAddress();
@@ -144,6 +194,7 @@ async function main() {
       verifier: withdrawVerifier, // back-compat for fixed-pool frontend
       factory: factoryAddr,
       pools,
+      tokens,
       shieldedPool: shieldedAddr,
     },
     deployedAt: new Date().toISOString(),

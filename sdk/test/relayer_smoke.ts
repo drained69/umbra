@@ -29,7 +29,7 @@ const post = async (body: unknown) => {
 const provider = new ethers.JsonRpcProvider(process.env.E2E_RPC || "http://127.0.0.1:8545");
 const alice = new ethers.Wallet(KEY0, provider);
 const status = (await (await fetch(`${R}/status`)).json()) as any;
-check(ethers.isAddress(status.relayer) && status.feeBps === 50, "/status exposes relayer address + fee");
+check(ethers.isAddress(status.relayer) && status.feeBps === 50 && Object.keys(status.fees).length > 0, "/status exposes relayer address + per-pool fee quotes");
 
 check((await post({ poolAddress: "nope" })).status === 400, "rejects malformed poolAddress");
 check((await post({ poolAddress: ethers.Wallet.createRandom().address, recipient: alice.address })).status === 400, "rejects non-allowlisted pool");
@@ -45,7 +45,7 @@ const denom = await pool.denomination();
 const note = createNote(denom);
 await pool.deposit(note);
 const fresh = ethers.Wallet.createRandom().address;
-const fee = (denom * BigInt(status.feeBps)) / 10_000n;
+const fee = BigInt(status.fees[ethers.getAddress(pool1)]);
 
 // proof bound to the WRONG fee must be refused before any gas is spent
 const bad = await pool.buildWithdraw(note, fresh, status.relayer, fee + 1n, ART);
@@ -59,6 +59,19 @@ check(ok.status === 200 && typeof ok.json.txHash === "string", "relays a valid w
 check((await provider.getBalance(fresh)) === denom - fee, "fresh recipient (no gas ever) received denom - fee");
 const replay = await post(body);
 check(replay.status === 409, "replay rejected as already spent (no gas burned)");
+
+// token (pUSD) pools are allowlisted and relayed too
+const tp = dep.contracts.tokens.pUSD.pools["10"];
+const tPool = new UmbraPoolClient(tp, alice, { deployBlock: dep.deployBlock, chunkSize: 50 });
+const tDenom = await tPool.denomination();
+const tNote = createNote(tDenom);
+await tPool.deposit(tNote);
+const tFresh = ethers.Wallet.createRandom().address;
+const tFee = BigInt(status.fees[ethers.getAddress(tp)]);
+const tp2 = await tPool.buildWithdraw(tNote, tFresh, status.relayer, tFee, ART);
+const tr = await post({ poolAddress: tp, recipient: tFresh, a: tp2.a, b: tp2.b, c: tp2.c, root: tp2.root.toString(), nullifierHash: tp2.nullifierHash.toString() });
+const pusdC = new ethers.Contract(dep.contracts.tokens.pUSD.address, ["function balanceOf(address) view returns (uint256)"], provider);
+check(tr.status === 200 && (await pusdC.balanceOf(tFresh)) === tDenom - tFee, "relays a pUSD withdrawal (token pools allowlisted)");
 
 console.log(`\nRELAYER SMOKE PASSED: ${n} checks`);
 process.exit(0);

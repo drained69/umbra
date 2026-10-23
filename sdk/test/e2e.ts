@@ -129,6 +129,27 @@ async function main() {
   await (await poolAsRelayer.withdraw(p2.a, p2.b, p2.c, p2.root, p2.nullifierHash, fresh2, relayer.address, fee, 0)).wait();
   check((await provider.getBalance(fresh2)) === denom - fee, "relayer withdrawal pays recipient denom - fee");
 
+  // ---------------- shielded Portaldot asset (pUSD; mock ERC-20 locally) ----------------
+  console.log("Asset pool (100 pUSD):");
+  const pusdInfo = dep.contracts.tokens.pUSD;
+  const pusdPool = new UmbraPoolClient(pusdInfo.pools["100"], alice, { deployBlock: dep.deployBlock, chunkSize: 50 });
+  const pusd = new ethers.Contract(pusdInfo.address, ["function balanceOf(address) view returns (uint256)"], provider);
+  const pDenom = await pusdPool.denomination();
+  check(pDenom === 100n * 10n ** 6n && (await pusdPool.token()) === pusdInfo.address, "pUSD pool: 100 pUSD (6 decimals), token() is the asset");
+  for (let i = 0; i < 2; i++) await pusdPool.deposit(createNote(pDenom)); // decoys
+  const pNote = createNote(pDenom);
+  const aliceBefore = await pusd.balanceOf(alice.address);
+  await pusdPool.deposit(pNote); // approve + deposit
+  check(aliceBefore - (await pusd.balanceOf(alice.address)) === pDenom, "deposit pulled exactly 100 pUSD (approve + deposit)");
+  const pFresh = ethers.Wallet.createRandom().address;
+  const pFee = (pDenom * 50n) / 10_000n;
+  const pp = await pusdPool.buildWithdraw(pNote, pFresh, relayer.address, pFee, ART_W);
+  const pusdPoolAsRelayer = new ethers.Contract(pusdInfo.pools["100"], ["function withdraw(uint256[2],uint256[2][2],uint256[2],uint256,uint256,address,address,uint256,uint256)"], relayer);
+  const relayerPusdBefore = await pusd.balanceOf(relayer.address);
+  await (await pusdPoolAsRelayer.withdraw(pp.a, pp.b, pp.c, pp.root, pp.nullifierHash, pFresh, relayer.address, pFee, 0)).wait();
+  check((await pusd.balanceOf(pFresh)) === pDenom - pFee, "fresh recipient got 99.5 pUSD via a real ZK proof (same circuit)");
+  check((await pusd.balanceOf(relayer.address)) - relayerPusdBefore === pFee, "relayer fee paid in pUSD");
+
   // ---------------- join-split pool ----------------
   console.log("Join-split pool:");
   const sp = new UmbraShieldedClient(dep.contracts.shieldedPool, alice, { deployBlock: dep.deployBlock, chunkSize: 50 });
