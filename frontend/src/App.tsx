@@ -6,6 +6,7 @@ import { connectEvm, connectNative, getViewingKey, listNativeAccounts, restoreVi
 import DepositPanel, { type TxRef } from "./components/DepositPanel";
 import WithdrawPanel from "./components/WithdrawPanel";
 import AuditorPanel from "./components/AuditorPanel";
+import DeployPanel from "./components/DeployPanel";
 
 type Tab = "deposit" | "withdraw" | "auditor";
 const RELAYER_URL = (import.meta as any).env?.VITE_RELAYER_URL || "http://localhost:8787";
@@ -17,6 +18,7 @@ export default function App() {
   const [balance, setBalance] = useState<string>("");
   const [tab, setTab] = useState<Tab>("deposit");
   const [viewingKey, setViewingKey] = useState<Uint8Array | null>(null);
+  const [showDeploy, setShowDeploy] = useState(() => new URLSearchParams(location.search).has("deploy"));
 
   const assetList = useMemo(() => assets(), []);
   const [assetSym, setAssetSym] = useState(assetList[0]?.symbol ?? "tPOT");
@@ -152,14 +154,23 @@ export default function App() {
         </div>
       )}
 
-      {!configured && (
+      {!configured && !(wallet?.kind === "native") && (
         <div className="status info">
-          No pools deployed for this network yet. Run <span className="mono">make deploy</span> — the app reads addresses
-          from <span className="mono">frontend/src/config/deployment.json</span>.
+          No pools deployed for this network yet. Connect the Portaldot Extension to deploy Umbra from your account, or run{" "}
+          <span className="mono">make deploy</span>.
         </div>
       )}
 
-      {wallet && asset && (
+      {wallet?.kind === "native" && (showDeploy || !configured) && <DeployPanel wallet={wallet} />}
+      {wallet?.kind === "native" && configured && !showDeploy && (
+        <div style={{ textAlign: "right", marginBottom: 8 }}>
+          <button className="ghost" onClick={() => setShowDeploy(true)}>
+            Deploy another set…
+          </button>
+        </div>
+      )}
+
+      {wallet && asset && !showDeploy && (
         <>
           <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
             <div className="denoms">

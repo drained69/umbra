@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@umbra/sdk": resolve(__dirname, "../sdk/src"),
+      "@umbra/artifacts": resolve(__dirname, "../sdk/artifacts"),
     },
   },
   define: {

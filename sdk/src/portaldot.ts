@@ -216,6 +216,8 @@ export async function buildReviveCall(
 export interface SendResult {
   blockHash: string;
   txHash: string;
+  /** events emitted by this extrinsic (for addresses of deployed contracts, etc.) */
+  events: any[];
 }
 
 /**
@@ -233,7 +235,7 @@ export async function sendNative(
   if (!(await isMapped(api, account))) txs.unshift(api.tx.revive.mapAccount() as any);
   const tx = txs.length === 1 ? txs[0] : (api.tx.utility.batchAll(txs) as any);
   return new Promise((resolve, reject) => {
-    const cb = ({ status, dispatchError, txHash }: any) => {
+    const cb = ({ status, dispatchError, txHash, events }: any) => {
       if (dispatchError) {
         if (dispatchError.isModule) {
           const d = api.registry.findMetaError(dispatchError.asModule);
@@ -241,7 +243,7 @@ export async function sendNative(
         } else reject(new Error(dispatchError.toString()));
         return;
       }
-      if (status.isInBlock) resolve({ blockHash: status.asInBlock.toHex(), txHash: txHash.toHex() });
+      if (status.isInBlock) resolve({ blockHash: status.asInBlock.toHex(), txHash: txHash.toHex(), events: events ?? [] });
     };
     const p = signer.pair ? tx.signAndSend(signer.pair, cb) : tx.signAndSend(account, { signer: signer.signer }, cb);
     p.catch(reject);

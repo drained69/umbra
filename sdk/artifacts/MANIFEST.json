@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-22T17:40:12.486Z",
+  "generatedAt": "2026-10-23T05:36:35.219Z",
   "setup": "local-single-contributor (DEMO ONLY)",
   "files": {
     "sdk/artifacts/withdraw.wasm": "2b60bc368b7d7a5b58bb6891f232faf311b20a19e14c861a0e46a071b9359b1f",
@@ -9,6 +9,7 @@
     "sdk/artifacts/transaction_final.zkey": "0b67fa7e332b46ddeef4725b1741a96ee461b8e90391c4e9208f8b6392fa944f",
     "sdk/artifacts/transaction_verification_key.json": "d96a0b4e862e7da09d8964aab13d78d7e4d1b4a8e02894750e910dd49260d3f7",
     "contracts/src/verifiers/WithdrawVerifier.sol": "5a1371779bf8ed6b49a69825faa61b113adca1ae3c887dd2f6bab9bdf22b07dc",
-    "contracts/src/verifiers/TransactionVerifier.sol": "6568258e45eecb163faf73b5b8ddd189e0c01183e0205b9e823da777123f1610"
+    "contracts/src/verifiers/TransactionVerifier.sol": "6568258e45eecb163faf73b5b8ddd189e0c01183e0205b9e823da777123f1610",
+    "sdk/artifacts/contracts.json": "50a1b66a7d297b4c4530d1e604dfd5669cf55330bca3a8cf4daa21e8723b9ad0"
   }
 }

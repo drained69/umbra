@@ -13,7 +13,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": false,
-    "paths": { "@umbra/sdk": ["../sdk/src"] }
+    "paths": { "@umbra/sdk": ["../sdk/src"], "@umbra/artifacts/*": ["../sdk/artifacts/*"] }
   },
   "include": ["src", "../sdk/src"]
 }

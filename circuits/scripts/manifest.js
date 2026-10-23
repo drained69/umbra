@@ -22,6 +22,7 @@ const FILES = [
   "sdk/artifacts/transaction_verification_key.json",
   "contracts/src/verifiers/WithdrawVerifier.sol",
   "contracts/src/verifiers/TransactionVerifier.sol",
+  "sdk/artifacts/contracts.json",
 ];
 const MANIFEST = path.join(ROOT, "sdk", "artifacts", "MANIFEST.json");
 

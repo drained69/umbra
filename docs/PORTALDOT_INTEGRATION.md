@@ -63,6 +63,17 @@ the app generates one per account, keeps it in the browser, and offers export/re
 non-sufficient assets (pUSD), the recipient must already hold tPOT: withdraw a tPOT note to
 the fresh address first (also unlinkable), then the asset note.
 
+## Deploying from a Portaldot account (no EVM key)
+
+Open the app with `?deploy` (or with no pools configured) and connect the Portaldot Extension.
+Pick what to deploy, press **Price it** — a single read-only dry-run of the whole plan from
+your account shows the exact tPOT needed against your balance — then **Deploy**: each contract
+is a `revive.instantiateWithCode` you sign in the extension; addresses come from
+`revive.Instantiated` events, progress is saved per step (an interrupted deployment resumes
+without re-paying), and you download the resulting `deployment.json`. Bytecode comes from
+`sdk/artifacts/contracts.json`, pinned in `MANIFEST.json`. CLI check of the same flow:
+`DEPLOYER=5… npx tsx sdk/test/native_deploy_live.ts` (read-only).
+
 ## Fit with Portaldot's roadmap
 
 Portaldot's whitepaper lists a **"ZKP-based privacy protection suite"** for compliant private

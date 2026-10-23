@@ -12,3 +12,4 @@ export * from "./units";
 export * from "./shieldedClient";
 export * from "./portaldot";
 export * from "./nativeClient";
+export * from "./nativeDeploy";
