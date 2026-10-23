@@ -183,6 +183,7 @@ async function main() {
     rpc: RPC,
     decimals: Number(DECIMALS), // EVM unit (18)
     nativeDecimals: net.nativeDecimals,
+    substrateWs: net.substrateWs,
     deployBlock,
     verifierMode: MODE,
     treeLevels: LEVELS,

@@ -25,8 +25,18 @@
     "chainId": null,
     "substrateWs": "wss://mainnet.portaldot.io",
     "evmAvailable": false,
-    "note": "Portaldot MAINNET exposes NO EVM JSON-RPC as of 2026-10-22 (eth_chainId => method not found). Umbra's Solidity contracts CANNOT deploy here until an EVM is live. When it is, set MAINNET_EVM_RPC + MAINNET_CHAIN_ID (verified via eth_chainId) and re-run with NETWORK=mainnet. Do NOT deploy a privacy pool to mainnet without an audit + a real trusted-setup ceremony (see docs/MAINNET.md).",
+    "note": "LEGACY Portaldot mainnet (wss://mainnet.portaldot.io, explorer portalscan) exposes NO EVM (eth_chainId => method not found). The V3 runtime with EVM support runs on 'v3live' \u2014 see that entry and docs/MAINNET.md.",
     "evmDecimals": 18,
     "nativeDecimals": 14
+  },
+  "v3live": {
+    "name": "portaldot-v3-live",
+    "evmRpc": null,
+    "chainId": 780780777,
+    "substrateWs": "wss://live-v3-node.portaldot.dev",
+    "evmAvailable": "native-only",
+    "evmDecimals": 18,
+    "nativeDecimals": 14,
+    "note": "PortaldotV3 Live (real POT), found 2026-10-23 as the node-console default: same V3 runtime with pallet-revive (allowEVMBytecode=true, revive.chainId=780780777, nativeToEthRatio=10^4) but NO public eth-rpc endpoint was found, so EVM-RPC deployment is refused here. Not confirmed by official docs as the production mainnet \u2014 confirm with Portaldot, run a trusted-setup ceremony and get an independent audit before any real-funds use (docs/MAINNET.md)."
   }
 }

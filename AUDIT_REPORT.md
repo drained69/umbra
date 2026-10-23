@@ -417,3 +417,88 @@ All items below are complete except the acknowledged ones.
 | `npm run preflight` (Portaldot V3 testnet) | all checks passed |
 | `manifest.js --check` | 8 artifacts match |
 | SDK `tsc --noEmit`, frontend `vite build` | OK |
+
+---
+
+# Addendum — Portaldot Integration Review (2026-10-23)
+
+Scope: the deep-integration work (native Portaldot-account path, asset pools, storage
+redesign) reviewed against the **live** V3 runtime using read-only dry-runs. Six further
+issues; all fixed or mitigated.
+
+| ID | Severity | Status |
+|---|---|---|
+| H-05 | High | Fixed |
+| M-05 | Medium | Fixed |
+| M-06 | Medium | Mitigated |
+| L-05 | Low | Fixed |
+| I-05 | Informational | Fixed |
+| I-06 | Informational | Design change (documented + tested) |
+
+### [H-05] Contracts were economically non-viable under Portaldot storage pricing [FIXED]
+
+**Severity**: High
+**Location**: `MerkleTreeWithHistory.sol`, `MerkleTreeWithHistoryPair.sol`, `UmbraPoolBase.sol`, relayer fees
+**Confidence**: HIGH (measured on the live runtime via `make measure`)
+
+**Description**: pallet-revive charges ~3.84 tPOT for every new 32-byte storage slot
+(`depositPerByte` = 0.06 tPOT). The original tree cached zero hashes in storage, allocated root
+history lazily, and stored a per-deposit `commitments` flag.
+
+**Impact**: Depositing 1 tPOT locked **8.96 tPOT** of storage deposit; each relayed withdrawal
+cost the relayer 3.84 tPOT against a 0.005 tPOT fee — the product could not operate.
+
+**Fix**: hard-coded Poseidon zero hashes (constructor rejects non-Poseidon hashers), pre-
+initialised `filledSubtrees` and root ring buffer (sentinel provably never verifies), packed
+index slot kept allocated, per-deposit commitment slot removed (see I-06). Relayer quotes
+`max(bps × denomination, floor)` with a 4 tPOT floor; defaults moved to 100/1000.
+Measured after: deposit **0**, withdrawal 3.84 (nullifier, irreducible), join-split 7.68.
+Enforced by `PortaldotStorage.t.sol` (no new slots per deposit across 30 deposits; exactly one
+per withdrawal; two per join-split).
+
+### [M-05] Viewing keys for Portaldot Extension accounts would be unrecoverable [FIXED]
+
+**Location**: frontend wallet layer
+**Description**: deriving the viewing key from a wallet signature works for deterministic
+ECDSA, but sr25519 (the Portaldot Extension's default) signs with randomness — every
+derivation would yield a different key, silently losing access to past memos.
+**Fix**: native accounts get a random per-account viewing key kept in the browser with
+explicit export/restore; EVM wallets keep signature derivation.
+
+### [M-06] Withdrawals that the chain would reject or misroute [MITIGATED]
+
+**Location**: SDK recipient resolution, `UmbraPoolClient.assertRecipientCanReceive`
+**Description**: (a) pUSD is a non-sufficient asset (`minBalance` 0.01): an account with no
+native balance cannot receive it, so withdrawals to brand-new addresses revert. (b) An
+unmapped `5…` account's H160 resolves to a separate fallback account, stranding funds.
+**Fix**: pool-type-aware pre-checks (existential deposit for tPOT; minBalance + account
+existence for assets, read from the chain at deploy) and `resolveRecipient` refuses unmapped
+native recipients with guidance (withdraw a tPOT note to the fresh address first; map the
+account). Contracts can't enforce these runtime rules, hence "mitigated".
+
+### [L-05] SDK compared token payouts against the native existential deposit [FIXED]
+
+**Description**: introduced during this integration and caught by the E2E run: a 99.5 pUSD
+payout (6-dec units) was compared with 0.1 tPOT (18-dec units) and rejected.
+**Fix**: checks are per pool type (see M-06).
+
+### [I-05] UI claimed coprocessor verification in on-chain mode [FIXED]
+The withdrawal visualizer always said "verified in WASM coprocessor"; it now reflects the
+deployment's `verifierMode`.
+
+### [I-06] Duplicate-commitment check removed [DESIGN CHANGE]
+Removing the per-deposit `commitments` slot saves ~3.84 tPOT per deposit. Safety: one secret
+⇒ one nullifier ⇒ at most one withdrawal, however many times its commitment is inserted; a
+copier only donates funds to the secret holder. Covered by
+`test_DuplicateCommitmentStillWithdrawsOnlyOnce`.
+
+### Updated verification evidence
+
+| Check | Result |
+|---|---|
+| `forge test` | 47 passed (real Poseidon bytecode; storage-slot and root-consistency properties) |
+| `make e2e` | 20 SDK + 10 relayer checks (tPOT, pUSD, join-split) |
+| `make live` (V3 testnet, read-only) | 14 passed |
+| `make preflight` (V3 testnet) | all passed (incl. revive constants, pUSD precompile) |
+| `make measure` / `make estimate` | per-op and deploy costs measured on the live runtime |
+| frontend `tsc --noEmit` + `vite build` | OK |

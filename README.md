@@ -1,4 +1,4 @@
-# Umbra — Confidential tPOT Payments on Portaldot V3
+# Umbra — Confidential POT & Portaldot-Asset Payments on Portaldot V3
 
 > Private, unlinkable native-token payments for Portaldot V3 — with the heavy
 > zero-knowledge verification offloaded to Portaldot's **WASM** VM while assets stay in
@@ -27,28 +27,32 @@ This "right VM for the right job" split is the answer to the question every judg
 
 ## What it does
 
-- **Shield**: deposit a fixed denomination (1 / 10 / 100 tPOT) behind a commitment
-  `Poseidon(nullifier, secret)`. Only the commitment is on-chain.
-- **Private withdraw**: prove in zero knowledge that you own *an* unspent note — never
-  *which* one — and withdraw to any address. No on-chain link between deposit and
-  withdrawal.
-- **Gasless to fresh addresses**: a relayer pays gas and takes a small, proof-bound fee,
-  so the recipient can be a brand-new wallet (true unlinkability).
-- **Viewing keys & selective disclosure**: every action can carry a memo encrypted to a
-  viewing key. You — or an auditor you *choose* to hand the key to — can reconstruct your
-  full history, with nothing exposed publicly. **Privacy with compliance, not a black box.**
+- **Shield** native POT *and any Portaldot asset* — **pUSD** (asset #7777) by default, via the
+  runtime's pallet-assets ERC-20 precompile → confidential stablecoin payments.
+- **Private withdraw** with a zero-knowledge proof that you own *an* unspent note — never
+  which one — to a `0x` address **or a Portaldot `5…` account**.
+- **Use your Portaldot Extension directly**: your native account calls Umbra's EVM contracts
+  through pallet-revive (`revive.call`), with account mapping batched into the same signature.
+  No MetaMask, no `0x` key. EVM wallets work too.
+- **Gasless to fresh addresses** via a relayer whose fee is bound into the proof.
+- **Join-split pool** for arbitrary-value private transfers between shielded users.
+- **Read-only viewing keys**: reveal your history to an auditor you choose — never spend power.
+- **Built for Portaldot's storage economics**: deposits allocate no storage (was 8.96 tPOT
+  locked per 1 tPOT deposit before the redesign). See
+  [`docs/PORTALDOT_INTEGRATION.md`](docs/PORTALDOT_INTEGRATION.md).
 
 ## Status (what is actually proven)
 
-Audited internally — see [`AUDIT_REPORT.md`](AUDIT_REPORT.md): 17 findings (1 Critical, 4 High),
-all Critical/High/Medium/Low fixed with regression tests; 2 informational items acknowledged.
+Audited internally in two passes — see [`AUDIT_REPORT.md`](AUDIT_REPORT.md): 23 findings (1 Critical,
+5 High), all Critical/High/Medium/Low fixed or mitigated with tests; informational items documented.
 
 | Layer | Evidence | Command |
 |---|---|---|
-| Contracts (both pools, factory, bridge) | **31 tests**, incl. real Groth16 proofs verified on-chain + audit regressions | `make test` |
+| Contracts (tPOT/asset/join-split pools, factory, bridge) | **47 tests** with the real Poseidon bytecode: real Groth16 proofs, on-chain roots == SDK roots, storage-slot properties, audit regressions | `make test` |
 | WASM coprocessor core | **7 tests**: verifies the *same* real proofs as Solidity; rejects tampering, off-curve, non-canonical | `make coprocessor-test` |
-| Full system on a real EVM | **25 E2E checks**: real deploy pipeline → ZK withdrawals, join-split deposit → private transfer → withdraw, viewing keys, relayer | `make e2e` |
-| Live Portaldot V3 testnet compatibility | BN254 precompiles, raw bytecode, units ratio, chain id | `make preflight` |
+| Full system on a real EVM | **30 E2E checks**: real deploy pipeline → tPOT + pUSD ZK withdrawals, join-split flow, viewing keys, relayer | `make e2e` |
+| Live Portaldot V3 testnet | **15 preflight + 14 native-integration checks** (read-only): precompiles, revive constants, asset precompiles, `5…` accounts calling contracts | `make preflight`, `make live` |
+| Real costs on Portaldot | exact deploy cost + per-operation storage deposits via live dry-runs | `make estimate`, `make measure` |
 | ZK artifacts ↔ verifiers consistency | SHA-256 pinned | `node circuits/scripts/manifest.js --check` |
 | SDK + frontend | typecheck + production build | `make check` |
 
@@ -66,11 +70,11 @@ All of the above run in CI (`.github/workflows/ci.yml`). See
 
 ## Networks & mainnet
 
-Deploys to **Portaldot V3 testnet** today (the hackathon target). **Portaldot mainnet has no
-EVM yet** (`eth_chainId` → method-not-found as of 2026-10-22), so these EVM contracts can't
-deploy there until an EVM is live. The deploy pipeline is multi-network and flips to mainnet
-with one env var once the EVM exists **and** a real trusted-setup ceremony + audit are done.
-Full detail and the (non-fabricated) status: [`docs/MAINNET.md`](docs/MAINNET.md).
+Target for the hackathon: **Portaldot V3 testnet**. Portaldot also runs **PortaldotV3 Live**
+(real POT) with the same EVM-capable runtime — Umbra is technically deployable there via
+native extrinsics, but confirm its status with Portaldot and complete a trusted-setup ceremony
++ independent audit first. The legacy mainnet has no EVM. Details:
+[`docs/MAINNET.md`](docs/MAINNET.md).
 
 ## Quickstart
 
@@ -80,6 +84,7 @@ make check            # contract tests + artifact pins + SDK typecheck + fronten
 make e2e              # full system on a throwaway local chain
 cp .env.example .env  # add a testnet PRIVATE_KEY
 node scripts/evm-funding-address.js   # where to send your faucet tPOT (5... -> your 0x key)
+make estimate         # exact cost on the live chain (read-only) — fund the deployer accordingly
 make deploy           # runs `make preflight`, then deploys everything to Portaldot V3
 make relayer          # start the gasless relayer
 make frontend         # open the dApp at http://localhost:5173

@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@noble/hashes": "1.5.0",
-    "@polkadot/api": "^17.0.2",
+    "@polkadot/api": "17.0.2",
     "circomlibjs": "0.1.7",
     "dotenv": "16.4.5",
     "ethers": "6.13.2"

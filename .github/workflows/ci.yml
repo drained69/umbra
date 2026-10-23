@@ -53,6 +53,8 @@ jobs:
         working-directory: sdk
       - run: npm ci
         working-directory: frontend
+      - run: npx tsc --noEmit
+        working-directory: frontend
       - run: npm run build
         working-directory: frontend
 
@@ -97,3 +99,27 @@ jobs:
           (cd relayer && npm ci --omit=optional)
       - name: Run E2E
         run: bash scripts/e2e.sh
+
+  live-portaldot:
+    name: Live Portaldot V3 testnet (read-only)
+    runs-on: ubuntu-latest
+    continue-on-error: true # external network; informative, not blocking
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install deps
+        run: |
+          (cd contracts && forge install foundry-rs/forge-std@v1.17.0 --no-git && forge build)
+          (cd sdk && npm ci)
+          (cd scripts && npm ci)
+      - name: Preflight (runtime facts, precompiles, asset precompiles)
+        run: cd scripts && NETWORK=testnet node preflight.js
+      - name: Native-account integration (dry-runs)
+        run: cd sdk && npx --yes tsx@4.19.1 test/portaldot_live.ts
+      - name: Per-operation costs
+        run: cd scripts && NETWORK=testnet node measure-costs.js

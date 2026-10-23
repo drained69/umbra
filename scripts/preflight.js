@@ -116,6 +116,38 @@ async function main() {
     }
   }
 
+  // 6. Substrate-side runtime facts Umbra depends on (pallet-revive + pallet-assets)
+  try {
+    const { ApiPromise, WsProvider } = await import("@polkadot/api");
+    const api = await ApiPromise.create({ provider: new WsProvider(net.substrateWs), noInitWarn: true });
+    const rv = api.consts.revive;
+    const ratio = BigInt(rv.nativeToEthRatio.toString());
+    ratio === 10n ** BigInt(net.evmDecimals - net.nativeDecimals)
+      ? ok(`revive.nativeToEthRatio = ${ratio} (EVM ${net.evmDecimals}-dec)`)
+      : bad(`revive.nativeToEthRatio = ${ratio}, expected 10^${net.evmDecimals - net.nativeDecimals}`);
+    Number(rv.chainId.toString()) === net.chainId ? ok(`revive.chainId = ${rv.chainId}`) : bad(`revive.chainId ${rv.chainId} != ${net.chainId}`);
+    rv.allowEVMBytecode.isTrue ? ok("revive.allowEVMBytecode = true (Solidity/EVM bytecode deployable)") : bad("EVM bytecode not allowed");
+    const ed = api.consts.balances.existentialDeposit.toBigInt();
+    ok(`existential deposit = ${Number(ed) / 10 ** net.nativeDecimals} (fresh recipients need at least this)`);
+    console.log(`  • storage price: ${Number(rv.depositPerByte.toBigInt()) / 10 ** net.nativeDecimals}/byte, ${Number(rv.depositPerItem.toBigInt()) / 10 ** net.nativeDecimals}/item — run \`make estimate\` for deploy cost`);
+    // configured Portaldot assets: ERC-20 precompile must mirror the native asset
+    const specs = (process.env.TOKEN_POOLS ?? "7777:100,1000").split(";").filter(Boolean);
+    for (const spec of specs) {
+      const id = BigInt(spec.split(":")[0]);
+      const a = await api.query.assets.asset(id);
+      if (a.isNone) { bad(`asset ${id} does not exist`); continue; }
+      const erc20 = ethers.getAddress("0x" + id.toString(16).padStart(8, "0") + "0".repeat(24) + "00010000");
+      const supply = BigInt(await p.call({ to: erc20, data: "0x18160ddd" }));
+      const md = await api.query.assets.metadata(id);
+      supply === a.unwrap().supply.toBigInt()
+        ? ok(`asset ${id} (${md.symbol.toUtf8()}) ERC-20 precompile ${erc20} mirrors native supply` + (a.unwrap().isSufficient.isTrue ? "" : " [non-sufficient: recipients must hold tPOT]"))
+        : bad(`asset ${id} ERC-20 precompile supply ${supply} != native ${a.unwrap().supply}`);
+    }
+    await api.disconnect();
+  } catch (e) {
+    bad(`substrate checks failed: ${e?.message || e}`);
+  }
+
   console.log(failures ? `\n${failures} check(s) FAILED — do not deploy.` : "\nAll checks passed.");
   process.exit(failures ? 1 : 0);
 }
