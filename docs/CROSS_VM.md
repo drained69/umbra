@@ -24,7 +24,12 @@ The pools only ever see an `IVerifier`. Which VM answers is a deployment choice
   natively against **the exact same real proofs** that the Solidity verifiers accept — both
   the withdraw and the join-split circuit — and rejects tampered inputs, wrong-circuit
   proofs, non-canonical scalars and off-curve points (`make coprocessor-test`, 7 tests).
-- It builds `no_std` for `wasm32-unknown-unknown`; the ink! contract type-checks (CI).
+- It builds `no_std` for `wasm32-unknown-unknown`, and the ink! contract builds into a
+  54,156-byte deployable wasm (`make coprocessor`). On the live testnet a read-only dry-run
+  instantiates it (`sdk/test/crossvm_live.ts`), and a measurement contract running the same
+  `umbra_groth16` code accepted a real withdraw proof and rejected a tampered one inside
+  pallet-contracts (figures below). Once deployed, `COPROCESSOR=<ss58>` makes the same test
+  run real and tampered proofs through the deployed contract.
 - Inputs use the **EVM calldata encoding** (32-byte big-endian words, G2 in precompile order
   `x.c1, x.c0, y.c1, y.c0`), so proofs cross VMs byte-for-byte with no re-serialization.
 
@@ -52,23 +57,80 @@ withdrawal (`relayer/crossvm.js`):
 Path B trusts the attestor (the relayer key) — disclosed in [`SECURITY.md`](SECURITY.md).
 Path A removes that trust. Both are real dual-VM execution.
 
-## Deploying the coprocessor
+## Deploying from the Portaldot Extension
+
+The app deploys the cross-VM path from a native account, every step signed in the Portaldot
+Extension: open `/?deploy&crossvm` (or **Contracts → Set up WASM verification**). Each step is
+priced by a live dry-run, can be resumed, and is re-checked on chain before it is relied on.
+
+| Step | VM | Extrinsic | Storage deposit (testnet, 2026-10-26) |
+|---|---|---|---|
+| `umbra_coprocessor::new(withdraw key)` | WASM | `contracts.instantiateWithCode` | 4,293.26 tPOT |
+| `UmbraCoprocessorBridge(0x0, attestor)` | EVM | `revive.instantiateWithCode` | 128.86 tPOT |
+| `UmbraPool(bridge, poseidon, 10 tPOT, 20)` | EVM | `revive.instantiateWithCode` | 562.97 tPOT |
+
+About **4,992 tPOT** in total including fees. Deposits stay locked with the contracts. The code
+upload dominates: pallet-contracts charges 0.06 tPOT per stored byte (54,156-byte wasm) plus a
+30% code-hash lockup. The pool reuses the deployed Poseidon hasher.
+
+The bridge's attestor defaults to the deploying account's EVM identity, so that account attests
+from its extension; `?attestor=0x…` sets another key (for example a relayer's). The app writes
+a `crossVm` section into `deployment.json` and lists the new pool as **10 tPOT · WASM**.
+
+**Withdrawing** from that pool takes two signatures:
+
+1. `utility.batchAll([contracts.call(coprocessor.verify_or_revert(proof)), revive.call(bridge.attest(proofHash))])`.
+   The pairing check runs in the WASM VM; `verify_or_revert` reverts on an invalid proof, so the
+   attestation is rolled back with it. Each verification increments `verify_count` and emits
+   `Verified`, so WASM execution is visible on chain.
+2. `revive.call(pool.withdraw(...))` — the pool asks the bridge, which finds the attestation.
+
+The attestation hash binds the chain id, the bridge, the proof and the exact public signals the
+pool passes to its verifier, so it cannot be reused for another bridge, chain or recipient.
+
+Check a deployment (read-only — runs a real and a tampered proof through the WASM VM):
 
 ```bash
-make coprocessor                                   # cargo contract build --release
-node scripts/vk_to_words.js withdraw > vk.json     # constructor argument (EVM-ordered words)
-# instantiate target/ink/umbra_coprocessor/umbra_coprocessor.contract with vk.json
-# (node-console.portaldot.dev or polkadot.js), one instance per circuit
-VERIFIER_MODE=coprocessor make deploy              # pools use UmbraCoprocessorBridge
-CROSS_VM=1 COPROCESSOR_CONTRACT=<ss58> SUBSTRATE_SEED=<seed> make relayer
+node scripts/verify-native-deployment.js deployments/testnet.json <5… deployer>
+cd sdk && COPROCESSOR=<ss58> npx --yes tsx@4.19.1 test/crossvm_live.ts
 ```
 
-The constructor validates the key (rejects malformed / off-curve / non-canonical words).
-`set_vk` (owner-only, emits `VerifyingKeyRotated`) supports a post-ceremony key rotation.
+The automated relayer path (`CROSS_VM=1`, `relayer/crossvm.js`) predates the `crossVm`
+deployment section and is not wired to the extension-deployed pool yet; it requires the bridge
+attestor to be the relayer's key.
 
-## Why not just verify on the EVM?
+### Building the coprocessor
 
-You can — `VERIFIER_MODE=onchain` uses the snarkjs verifiers, and `make preflight`
-confirms Portaldot V3 supports the BN254 precompiles they need. The coprocessor demonstrates
-the dual-VM design in a running app: the same proof, checked on the VM where pairing math
-is native Rust, with the EVM asset layer unchanged.
+```bash
+make coprocessor   # Rust 1.86.0 + cargo-contract 5.0.3, then scripts/export-coprocessor.js
+```
+
+cargo-contract 5.0.3 cannot build `core` on newer toolchains (the `panic_immediate_abort`
+feature became a panic strategy), hence the pinned `INK_TOOLCHAIN`. The export writes
+`sdk/artifacts/coprocessor.json` (wasm, blake2-256 code hash, message selectors, withdraw
+verifying-key words), which `sdk/artifacts/MANIFEST.json` pins. The constructor validates the
+key (rejects malformed, off-curve and non-canonical words). `set_vk` (owner-only, emits
+`VerifyingKeyRotated`) supports a post-ceremony key rotation.
+
+## Measured cost: WASM vs EVM
+
+The same real withdraw proof, read-only dry-runs on Portaldot V3 testnet (2026-10-26):
+
+| Verifier | Result | Block weight (refTime) |
+|---|---|---|
+| EVM `WithdrawVerifier.verifyProof` (snarkjs, BN254 precompiles) | accepted | 0.035 s |
+| WASM `umbra_groth16` (arkworks, pallet-contracts) | accepted; tampered input rejected | ≈ 0.3 s |
+
+The WASM figure is a measurement contract's instantiate weight (0.43 s) minus the coprocessor's
+own instantiation (0.13 s); `verify-native-deployment.js` prints the exact weight of `check`
+once the coprocessor is deployed. Both fit easily within a block (2 s; 1.7 s per normal
+extrinsic).
+
+## Why verify in WASM at all?
+
+Not for gas. Portaldot V3's EVM has native BN254 precompiles, so a BN254 Groth16 check costs
+about a tenth as much there; `VERIFIER_MODE=onchain` stays the default for cost. The WASM VM
+runs verification as ordinary Rust with no precompile dependency, which is what proof systems
+and curves without EVM precompiles (for example BLS12-381-based proofs) would need. It also
+gives Umbra a second, independent verifier implementation, checked here against the exact
+proofs the EVM verifier accepts.
