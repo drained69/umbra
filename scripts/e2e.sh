@@ -28,7 +28,7 @@ echo "==> SDK end-to-end"
 (cd sdk && E2E_RPC="http://127.0.0.1:$PORT_RPC" npx --yes tsx@4.19.1 test/e2e.ts)
 
 echo "==> relayer smoke"
-(cd relayer && NETWORK=local PRIVATE_KEY=$KEY1 PORTALDOT_RPC="http://127.0.0.1:$PORT_RPC" RELAYER_PORT=$PORT_RELAYER exec node index.js) &
+(cd relayer && NETWORK=local RELAYER_FEE_SHIELDED=0.25 PRIVATE_KEY=$KEY1 PORTALDOT_RPC="http://127.0.0.1:$PORT_RPC" RELAYER_PORT=$PORT_RELAYER exec node index.js) &
 RELAYER_PID=$!
 until curl -s "http://127.0.0.1:$PORT_RELAYER/health" >/dev/null; do sleep 0.5; done
 (cd sdk && E2E_RPC="http://127.0.0.1:$PORT_RPC" RELAYER_URL="http://127.0.0.1:$PORT_RELAYER" npx --yes tsx@4.19.1 test/relayer_smoke.ts)

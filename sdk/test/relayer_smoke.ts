@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { UmbraPoolClient, createNote } from "../src/index";
+import { Keypair, UmbraShieldedClient, Utxo, createNote, getRelayerQuote, relayTransact, UmbraPoolClient } from "../src/index";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..");
@@ -72,6 +72,49 @@ const tp2 = await tPool.buildWithdraw(tNote, tFresh, status.relayer, tFee, ART);
 const tr = await post({ poolAddress: tp, recipient: tFresh, a: tp2.a, b: tp2.b, c: tp2.c, root: tp2.root.toString(), nullifierHash: tp2.nullifierHash.toString() });
 const pusdC = new ethers.Contract(dep.contracts.tokens.pUSD.address, ["function balanceOf(address) view returns (uint256)"], provider);
 check(tr.status === 200 && (await pusdC.balanceOf(tFresh)) === tDenom - tFee, "relays a pUSD withdrawal (token pools allowlisted)");
+
+// --- private balance (join-split pool): payments and withdrawals the user's wallet never signs ---
+const TX_ART = { wasm: join(ROOT, "sdk/artifacts/transaction.wasm"), zkey: join(ROOT, "sdk/artifacts/transaction_final.zkey") };
+const sp = dep.contracts.shieldedPool;
+check(status.shielded && ethers.getAddress(status.shielded.pool) === ethers.getAddress(sp) && BigInt(status.shielded.fee) > 0n, "/status quotes a fee for the private pool");
+const quote = await getRelayerQuote(R, { chainId: (await provider.getNetwork()).chainId, pool: sp });
+const shielded = new UmbraShieldedClient(sp, alice, { deployBlock: dep.deployBlock, chunkSize: 50 });
+const me = new Keypair();
+const bob = new Keypair();
+const one = ethers.parseEther("1");
+await shielded.transact({ inputs: [], outputs: [new Utxo({ amount: 5n * one, keypair: me })], owner: me, extAmount: 5n * one, artifacts: TX_ART }, alice);
+check((await shielded.balance(me)) === 5n * one, "alice deposits 5 into her private balance (the one step her wallet signs)");
+
+const postTx = async (prepared: { proof: any; ext: any }, patch: Record<string, unknown> = {}) => {
+  const [args, extData] = UmbraShieldedClient.encodeArgs(prepared.proof, prepared.ext);
+  const body = JSON.stringify({ args, extData: { ...extData, ...patch } }, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
+  const r = await fetch(`${R}/transact`, { method: "POST", headers: { "content-type": "application/json" }, body });
+  return { status: r.status, json: (await r.json()) as any };
+};
+const pay = await shielded.planPayment({ source: "private", owner: me, to: bob.address(), amount: one, memo: "lunch", relay: quote });
+const wrongRelayer = await shielded.prepare({ ...pay, relayer: ethers.Wallet.createRandom().address, artifacts: TX_ART });
+check((await postTx(wrongRelayer)).status === 400, "refuses a proof bound to another relayer");
+const lowFee = await shielded.prepare({ ...(await shielded.planPayment({ source: "private", owner: me, to: bob.address(), amount: one, relay: { ...quote, fee: quote.fee - 1n } })), artifacts: TX_ART });
+check((await postTx(lowFee)).status === 400, "refuses a fee below its quote");
+const good = await shielded.prepare({ ...pay, artifacts: TX_ART });
+check((await postTx(good, { recipient: ethers.Wallet.createRandom().address })).status === 400, "refuses extData changed after proving (no gas spent)");
+const dep2 = await shielded.prepare({ inputs: [], outputs: [new Utxo({ amount: one, keypair: me })], owner: me, extAmount: one, relayer: quote.relayer, fee: 0n, artifacts: TX_ART });
+check((await postTx(dep2)).status === 400, "never funds deposits");
+
+const nonceBefore = await provider.getTransactionCount(alice.address);
+const poolBefore = await provider.getBalance(sp);
+const r1 = await relayTransact(quote, good);
+check(typeof r1.txHash === "string" && (await shielded.balance(bob)) === one, "relays a private payment: bob receives 1");
+check((await shielded.balance(me)) === 4n * one - quote.fee, "alice's private balance pays the amount plus the relayer fee");
+check(poolBefore - (await provider.getBalance(sp)) === quote.fee, "only the fee leaves the pool on a private payment");
+check((await postTx(good)).status === 409, "replay rejected as already spent");
+
+const fresh2 = ethers.Wallet.createRandom().address;
+const wd = await shielded.prepare({ ...(await shielded.planWithdrawal(me, 2n * one, fresh2, quote)), artifacts: TX_ART });
+await relayTransact(quote, wd);
+check((await provider.getBalance(fresh2)) === 2n * one, "relays a withdrawal to a never-funded address");
+check((await shielded.balance(me)) === 2n * one - 2n * quote.fee, "the withdrawal fee also comes from the private balance");
+check((await provider.getTransactionCount(alice.address)) === nonceBefore, "alice's wallet signed neither relayed transaction");
 
 console.log(`\nRELAYER SMOKE PASSED: ${n} checks`);
 process.exit(0);

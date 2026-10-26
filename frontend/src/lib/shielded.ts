@@ -1,7 +1,8 @@
 import { ethers } from "ethers";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
-import { SHIELDED_POOL_ABI, UmbraShieldedClient, buildReviveCall, sendNative, type TransactParams } from "@umbra/sdk";
+import { SHIELDED_POOL_ABI, UmbraShieldedClient, buildReviveCall, relayTransact, sendNative, type RelayTerms, type TransactParams } from "@umbra/sdk";
 import { DEPLOYMENT, blockLink, getApi, short } from "./chain";
+import { relayerQuote } from "./relay";
 import type { Wallet } from "./wallet";
 
 export const TX_ARTIFACTS = { wasm: "/zk/transaction.wasm", zkey: "/zk/transaction_final.zkey" };
@@ -34,6 +35,28 @@ export async function shieldedCall(
     // a deposit funded by an earlier call in the same batch cannot be dry-run on its own
     fallbackWeight: opts.dependsOnEarlierCalls ? { refTime: 300_000_000_000n, proofSize: 2_000_000n } : undefined,
   });
+}
+
+/**
+ * Spend from the private balance. By default the relayer submits it, so no wallet signs and
+ * the chain shows only the relayer; its fee comes out of the private balance. `selfSubmit`
+ * (an explicit user choice) signs with the connected wallet instead, which reveals the account.
+ */
+export async function spendPrivately(
+  client: UmbraShieldedClient,
+  build: (relay?: RelayTerms) => Promise<Plan>,
+  onStatus: (m: string) => void,
+  opts: { selfSubmit?: Wallet | null } = {}
+): Promise<TxRef> {
+  if (opts.selfSubmit) return submitShielded(opts.selfSubmit, client, await build(), onStatus);
+  onStatus("Contacting the relayer…");
+  const quote = await relayerQuote();
+  const plan = await build(quote);
+  onStatus("Generating a zero-knowledge proof in your browser…");
+  const prepared = await proveShielded(client, plan);
+  onStatus("The relayer is submitting it. Nothing for your wallet to sign…");
+  const r = await relayTransact(quote, prepared);
+  return { label: `relayed · block ${short(r.blockHash)}`, href: blockLink(r.blockHash) };
 }
 
 /** Prove and submit a join-split plan with whichever wallet is connected. */

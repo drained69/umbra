@@ -28,6 +28,12 @@ export interface ScannedCommitment {
   encryptedOutput: string; // 0x
 }
 
+/** A relayer's terms, bound into the proof: it is paid `fee` and nothing else. */
+export interface RelayTerms {
+  relayer: string; // the relayer's EVM address
+  fee: bigint; // 18-decimal wei, taken from the spent notes
+}
+
 export interface TransactParams {
   inputs: Utxo[]; // 0..2 of your own unspent UTXOs
   outputs: Utxo[]; // 0..2 outputs (yours or a recipient's via Keypair.fromAddress)
@@ -121,25 +127,30 @@ export class UmbraShieldedClient {
    *  - "wallet":  the payer's wallet deposits the amount straight into the recipient's note;
    *               the recipient stays hidden but the amount is public as a deposit.
    */
-  async planPayment(p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: bigint; memo?: string }): Promise<Omit<TransactParams, "artifacts">> {
+  async planPayment(p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: bigint; memo?: string; relay?: RelayTerms }): Promise<Omit<TransactParams, "artifacts">> {
     if (p.amount <= 0n) throw new Error("amount must be positive");
     const payee = new Utxo({ amount: p.amount, keypair: Keypair.fromAddress(p.to), memo: p.memo });
     if (p.source === "wallet") {
       return { inputs: [], outputs: [payee], owner: p.owner ?? new Keypair(), extAmount: p.amount };
     }
     if (!p.owner) throw new Error("unlock a private account to pay from your private balance");
-    const { inputs, change } = this.selectInputs(await this.myUtxos(p.owner), p.amount);
+    const fee = p.relay?.fee ?? 0n;
+    const { inputs, change } = this.selectInputs(await this.myUtxos(p.owner), p.amount + fee);
     const outputs = [payee];
     if (change > 0n) outputs.push(new Utxo({ amount: change, keypair: p.owner }));
-    return { inputs, outputs, owner: p.owner, extAmount: 0n };
+    return { inputs, outputs, owner: p.owner, extAmount: 0n, relayer: p.relay?.relayer, fee };
   }
 
-  /** Plan a withdrawal of `amount` from `owner`'s private balance to an EVM `recipient`. */
-  async planWithdrawal(owner: Keypair, amount: bigint, recipient: string): Promise<Omit<TransactParams, "artifacts">> {
+  /**
+   * Plan a withdrawal of `amount` from `owner`'s private balance to an EVM `recipient`. With
+   * `relay`, the relayer submits it and its fee comes out of the private balance on top.
+   */
+  async planWithdrawal(owner: Keypair, amount: bigint, recipient: string, relay?: RelayTerms): Promise<Omit<TransactParams, "artifacts">> {
     if (amount <= 0n) throw new Error("amount must be positive");
-    const { inputs, change } = this.selectInputs(await this.myUtxos(owner), amount);
+    const fee = relay?.fee ?? 0n;
+    const { inputs, change } = this.selectInputs(await this.myUtxos(owner), amount + fee);
     const outputs = change > 0n ? [new Utxo({ amount: change, keypair: owner })] : [];
-    return { inputs, outputs, owner, extAmount: -amount, recipient };
+    return { inputs, outputs, owner, extAmount: -amount, recipient, relayer: relay?.relayer, fee };
   }
 
   private selectInputs(notes: Utxo[], amount: bigint): { inputs: Utxo[]; change: bigint } {

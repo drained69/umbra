@@ -23,6 +23,7 @@ import PrivateAccountCard from "./PrivateAccountCard";
 import QrCode from "./QrCode";
 import CopyButton from "./CopyButton";
 import { PrivatePoolMeter } from "./PrivacyMeter";
+import RelayRoute, { useSpendRoute } from "./RelayRoute";
 
 export type PaySub = "send" | "request" | "split" | "requests";
 type Status = { t: "ok" | "err" | "info"; m: string; href?: string } | null;
@@ -76,12 +77,14 @@ function SendForm({ wallet }: { wallet: Wallet }) {
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [source, setSource] = useState<"private" | "wallet">("private");
+  const [selfSubmit, setSelfSubmit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
+  const route = useSpendRoute(wallet, selfSubmit);
 
   const isPrivate = validShielded(to);
   const units = (() => { try { return toUnits(amount, 18); } catch { return 0n; } })();
-  const canUsePrivate = !!pa.owner && pa.spendable >= units && units > 0n;
+  const canUsePrivate = !!pa.owner && pa.spendable >= units + route.fee && units > 0n;
   const effectiveSource = isPrivate ? (source === "private" && canUsePrivate ? "private" : "wallet") : null;
 
   useEffect(() => { if (isPrivate) setAsset(TPOT); }, [isPrivate]);
@@ -92,7 +95,7 @@ function SendForm({ wallet }: { wallet: Wallet }) {
     try {
       const info = (m: string) => setStatus({ t: "info", m });
       if (isPrivate) {
-        const ref = await payPrivately(wallet, pa.client, { source: effectiveSource!, owner: pa.owner, to: to.trim(), amount, memo: memo.trim() || undefined }, info);
+        const ref = await payPrivately(effectiveSource === "private" ? route.signer : wallet, pa.client, { source: effectiveSource!, owner: pa.owner, to: to.trim(), amount, memo: memo.trim() || undefined }, info);
         logActivity({ kind: "send", title: `Sent ${amount} ${NATIVE} privately${toName ? ` to ${toName}` : ""}`, detail: memo || undefined, href: ref.href, private: true });
         setStatus({ t: "ok", m: `Sent privately · ${ref.label}`, href: ref.href });
         pa.refresh();
@@ -135,8 +138,9 @@ function SendForm({ wallet }: { wallet: Wallet }) {
           </div>
         </>}
         <PrivacyNote mode={isPrivate ? (effectiveSource === "private" ? "private" : "wallet-to-private") : to.trim() ? "public" : null} />
+        {effectiveSource === "private" && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} />}
         {isPrivate && <PrivatePoolMeter />}
-        <button className="primary" onClick={send} disabled={busy || !to.trim() || units <= 0n}>{busy ? "Working…" : isPrivate ? "Send privately" : "Send"}</button>
+        <button className="primary" onClick={send} disabled={busy || !to.trim() || units <= 0n || (effectiveSource === "private" && !route.ready)}>{busy ? "Working…" : isPrivate ? "Send privately" : "Send"}</button>
         <StatusLine s={status} />
       </div>
       <PrivateAccountCard compact />
@@ -147,7 +151,7 @@ function SendForm({ wallet }: { wallet: Wallet }) {
 function PrivacyNote({ mode }: { mode: "private" | "wallet-to-private" | "public" | null }) {
   if (!mode) return null;
   const text = {
-    private: "Hidden: who receives and how much. Visible: that your wallet submitted a private-pool transaction.",
+    private: "Hidden: who receives and how much.",
     "wallet-to-private": "Hidden: who receives. Visible: your wallet and the amount, as a deposit into the private pool.",
     public: "Public transfer: anyone can see the sender, recipient and amount.",
   }[mode];
@@ -434,6 +438,8 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
   const pa = usePrivateAccount();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
+  const [selfSubmit, setSelfSubmit] = useState(false);
+  const route = useSpendRoute(wallet, selfSubmit);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [paid, setPaid] = useState(false);
   let req: PaymentRequest | null = null;
@@ -446,20 +452,20 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
   }
   const mine = req ? findMyRequest(req.id) : undefined;
   const units = req ? toUnits(req.amount, 18) : 0n;
-  const fromPrivate = !!req?.to.shielded && !!pa.owner && pa.spendable >= units;
+  const fromPrivate = !!req?.to.shielded && !!pa.owner && pa.spendable >= units + route.fee;
 
   async function pay(kind: "private" | "wallet" | "public") {
-    if (!req || !wallet) return;
+    if (!req || (!wallet && kind !== "private")) return;
     setBusy(true);
     setStatus(null);
     try {
       const info = (m: string) => setStatus({ t: "info", m });
       let ref: TxRef & { blockHash?: string };
       if (kind === "public") {
-        ref = await payPublicly(wallet, { asset: req.asset, to: req.to.account!, amount: req.amount, requestId: req.id }, info);
+        ref = await payPublicly(wallet!, { asset: req.asset, to: req.to.account!, amount: req.amount, requestId: req.id }, info);
         if (ref.blockHash) setReceipt(`${appUrl()}?receipt=${encodeReceipt({ v: 1, id: req.id, chainId: req.chainId, blockHash: ref.blockHash })}`);
       } else {
-        ref = await payPrivately(wallet, pa.client, { source: kind, owner: pa.owner, to: req.to.shielded!, amount: req.amount, memo: requestMemo(req.id, req.memo ?? "") }, info);
+        ref = await payPrivately(kind === "private" ? route.signer : wallet, pa.client, { source: kind, owner: pa.owner, to: req.to.shielded!, amount: req.amount, memo: requestMemo(req.id, req.memo ?? "") }, info);
         pa.refresh();
       }
       logActivity({ kind: "pay", title: `Paid ${req.amount} ${req.asset.symbol} to ${req.name ?? "a request"}`, detail: req.memo, href: ref.href, private: kind !== "public" });
@@ -480,17 +486,19 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
           <h2 className="pay-amount">{req.amount} <small>{req.asset.symbol}</small></h2>
           <p><strong>{req.name ?? "Someone"}</strong> is asking you to pay{req.memo ? <> for <em>{req.memo}</em></> : null}.</p>
           {mine && <div className="status info">This is your own request ({mine.status}).</div>}
-          {!wallet ? <button className="primary" onClick={onConnect}>Connect Portaldot to pay</button> : paid ? null : <>
+          {paid ? null : <>
             {req.to.shielded && <>
               <span className="toolbar-label" style={{ marginTop: 16 }}>PAY PRIVATELY</span>
               <div className="pay-options">
-                <button className="primary" disabled={busy || !fromPrivate} onClick={() => pay("private")}>From my private balance{pa.owner ? ` (${fmt(pa.spendable, 18, 4)} ${NATIVE})` : ""}</button>
-                <button disabled={busy} onClick={() => pay("wallet")}>From my wallet</button>
+                <button className="primary" disabled={busy || !fromPrivate || !route.ready} onClick={() => pay("private")}>From my private balance{pa.owner ? ` (${fmt(pa.spendable, 18, 4)} ${NATIVE})` : ""}</button>
+                {wallet && <button disabled={busy} onClick={() => pay("wallet")}>From my wallet</button>}
               </div>
-              <p className="privacy-note private">{fromPrivate ? "From your private balance, nobody can see who paid whom or how much." : "From your wallet, the recipient stays hidden but your wallet and the amount are visible as a deposit."}</p>
+              <p className="privacy-note private">{fromPrivate ? "From your private balance, nobody can see who paid whom or how much. No wallet connection needed." : "From your wallet, the recipient stays hidden but your wallet and the amount are visible as a deposit."}</p>
+              {fromPrivate && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} />}
               <PrivatePoolMeter />
             </>}
-            {req.to.account && <>
+            {!wallet && <button className={req.to.shielded ? "" : "primary"} style={{ marginTop: 16 }} onClick={onConnect}>Connect Portaldot to pay from a wallet</button>}
+            {wallet && req.to.account && <>
               <span className="toolbar-label" style={{ marginTop: 16 }}>PAY PUBLICLY</span>
               <div className="pay-options"><button disabled={busy} onClick={() => pay("public")}>Pay {short(req.to.account)}</button></div>
               {wallet.kind === "evm" && <p className="hint">From an EVM wallet the payment cannot carry the request id, so no receipt is generated.</p>}
@@ -501,7 +509,7 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
           {(paid || mine) && <button className="text-button" style={{ marginTop: 12 }} onClick={onDone}>Back to Umbra →</button>}
         </>}
       </div>
-      {wallet && req?.to.shielded ? <PrivateAccountCard compact /> : <HowRequestsWork />}
+      {req?.to.shielded ? <PrivateAccountCard compact /> : <HowRequestsWork />}
     </div>
   );
 }

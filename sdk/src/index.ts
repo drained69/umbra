@@ -18,3 +18,4 @@ export * from "./hybridProvider";
 export * from "./crossVm";
 export * from "./swap";
 export * from "./payments";
+export * from "./relay";

@@ -13,22 +13,27 @@ import {
 } from "@umbra/sdk";
 import { blockLink, getApi, short } from "./chain";
 import { NATIVE_PLANCK_DECIMALS } from "./finance";
-import { submitShielded, type TxRef } from "./shielded";
+import { spendPrivately, submitShielded, type TxRef } from "./shielded";
 import type { Wallet } from "./wallet";
 
 /**
- * Pay a shielded address. "private" spends the payer's private balance (recipient and amount
- * hidden); "wallet" deposits from the connected wallet straight into the payee's note
- * (recipient hidden, amount visible as a deposit). The memo is encrypted to the payee.
+ * Pay a shielded address. "private" spends the payer's private balance: the relayer submits
+ * it, so sender, recipient and amount are all hidden (unless `signer` opts to sign with a
+ * wallet). "wallet" deposits from the connected wallet straight into the payee's note
+ * (recipient hidden, wallet and amount visible as a deposit). The memo is encrypted to the payee.
  */
 export async function payPrivately(
-  wallet: Wallet,
+  signer: Wallet | null,
   client: UmbraShieldedClient,
   p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: string; memo?: string },
   onStatus: (m: string) => void
 ): Promise<TxRef> {
-  const plan = await client.planPayment({ source: p.source, owner: p.owner, to: p.to, amount: toUnits(p.amount, 18), memo: p.memo });
-  return submitShielded(wallet, client, plan, onStatus);
+  const base = { owner: p.owner, to: p.to, amount: toUnits(p.amount, 18), memo: p.memo };
+  if (p.source === "private") {
+    return spendPrivately(client, (relay) => client.planPayment({ ...base, source: "private", relay }), onStatus, { selfSubmit: signer });
+  }
+  if (!signer) throw new Error("Connect a wallet to pay from it.");
+  return submitShielded(signer, client, await client.planPayment({ ...base, source: "wallet" }), onStatus);
 }
 
 /**
