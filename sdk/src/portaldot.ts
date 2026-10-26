@@ -190,7 +190,7 @@ export async function buildReviveCall(
   dest: string,
   data: string,
   valueEvmWei = 0n,
-  opts: { abi?: ethers.InterfaceAbi; fallbackWeight?: { refTime: bigint; proofSize: bigint } } = {}
+  opts: { abi?: ethers.InterfaceAbi; fallbackWeight?: { refTime: bigint; proofSize: bigint }; fallbackDeposit?: bigint } = {}
 ): Promise<SubmittableExtrinsic<"promise">> {
   const value = evmWeiToPlanck(valueEvmWei);
   const dr = await dryRunCall(api, origin, dest, data, value);
@@ -202,7 +202,7 @@ export async function buildReviveCall(
     }
     // Dependent call inside a batch (e.g. deposit after approve): use the caller's estimate.
     weight = opts.fallbackWeight;
-    deposit = 10n ** 14n; // 1 tPOT cap; only the actual deposit is charged
+    deposit = opts.fallbackDeposit ?? 10n ** 14n; // a cap (planck): only the actual deposit is charged
   }
   return api.tx.revive.call(
     dest,

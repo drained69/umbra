@@ -8,7 +8,16 @@ import { ethers } from "ethers";
 import { assetErc20Address, evmAddressOf, sendNative, type SendResult } from "./portaldot";
 
 export type Bytecodes = Record<
-  "Poseidon2" | "WithdrawVerifier" | "TransactionVerifier" | "UmbraPool" | "UmbraTokenPool" | "UmbraShieldedPool" | "UmbraCoprocessorBridge" | "DeployHarness",
+  | "Poseidon2"
+  | "WithdrawVerifier"
+  | "TransactionVerifier"
+  | "UmbraPool"
+  | "UmbraTokenPool"
+  | "UmbraShieldedPool"
+  | "UmbraCoprocessorBridge"
+  | "DeployHarness"
+  | "MultiAssetVerifier"
+  | "UmbraMultiAssetPool",
   string
 >;
 
@@ -67,6 +76,25 @@ export function planDeployment(code: Bytecodes, cfg: DeployConfig): DeployStep[]
     });
   }
   return steps;
+}
+
+/**
+ * Steps to add the multi-asset private balance to an existing deployment: its verifier, then
+ * the pool, reusing the deployed Poseidon hasher. `tokens` are ERC-20 assets with ids 1..n.
+ */
+export function planMultiAssetDeployment(code: Bytecodes, cfg: { poseidon: string; tokens: string[]; levels?: number }): DeployStep[] {
+  return [
+    { id: "multiAssetVerifier", label: "Multi-asset verifier (Groth16)", initcode: () => code.MultiAssetVerifier },
+    {
+      id: "multiAssetPool",
+      label: "Multi-asset private pool",
+      initcode: (a) =>
+        ethers.concat([
+          code.UmbraMultiAssetPool,
+          abi.encode(["address", "address", "uint32", "address[]"], [a.multiAssetVerifier, cfg.poseidon, cfg.levels ?? LEVELS, cfg.tokens]),
+        ]),
+    },
+  ];
 }
 
 export interface InstantiateDryRun {

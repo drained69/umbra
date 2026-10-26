@@ -34,6 +34,8 @@ export async function shieldedCall(
     abi: SHIELDED_POOL_ABI,
     // a deposit funded by an earlier call in the same batch cannot be dry-run on its own
     fallbackWeight: opts.dependsOnEarlierCalls ? { refTime: 300_000_000_000n, proofSize: 2_000_000n } : undefined,
+    // two new nullifier slots cost 7.68 tPOT of storage deposit (measured); cap at 12
+    fallbackDeposit: 12n * 10n ** 14n,
   });
 }
 

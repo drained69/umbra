@@ -29,6 +29,7 @@ const NETWORK = (process.env.NETWORK || "testnet").toLowerCase();
 const deployment = JSON.parse(readFileSync(join(ROOT, "deployments", `${NETWORK}.json`), "utf8"));
 const vkey = JSON.parse(readFileSync(join(ROOT, "sdk", "artifacts", "withdraw_verification_key.json"), "utf8"));
 const txVkey = JSON.parse(readFileSync(join(ROOT, "sdk", "artifacts", "transaction_verification_key.json"), "utf8"));
+const maVkey = JSON.parse(readFileSync(join(ROOT, "sdk", "artifacts", "multiasset_verification_key.json"), "utf8"));
 
 const RPC = process.env.PORTALDOT_RPC || deployment.rpc;
 const CHAIN_ID = Number(deployment.chainId);
@@ -59,9 +60,12 @@ const POOL_ABI = [
   "function withdraw(uint256[2] a,uint256[2][2] b,uint256[2] c,uint256 root,uint256 nullifierHash,address recipient,address relayer,uint256 fee,uint256 refund)",
 ];
 
-if (!process.env.PRIVATE_KEY) throw new Error("set PRIVATE_KEY");
+// PRIVATE_KEY (EVM account): fixed-pool withdrawals and the single-asset private pool.
+// RELAYER_SEED (native Portaldot account): the multi-asset private pool and private swaps,
+// which need the built-in exchange. Set either or both.
+if (!process.env.PRIVATE_KEY && !process.env.RELAYER_SEED) throw new Error("set PRIVATE_KEY and/or RELAYER_SEED");
 const provider = new ethers.JsonRpcProvider(RPC, CHAIN_ID, { staticNetwork: true });
-const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+const wallet = process.env.PRIVATE_KEY ? new ethers.Wallet(process.env.PRIVATE_KEY, provider) : null;
 
 // Only pools we deployed can be targeted (prevents gas griefing via arbitrary contracts).
 const tokenPools = Object.values(deployment.contracts.tokens || {}).flatMap((t) => Object.values(t.pools));
@@ -113,6 +117,15 @@ const EXT_DATA_TYPE = "tuple(address recipient,int256 extAmount,address relayer,
 const MAX_ENCRYPTED_OUTPUT_BYTES = 1024; // notes are padded to a fixed 384-byte plaintext
 const MAX_EXT_AMOUNT = 2n ** 248n;
 
+const MA = deployment.contracts.multiAssetPool || null;
+const MA_POOL = MA ? ethers.getAddress(MA.address) : null;
+const MA_ASSET_IDS = new Set((MA?.assets || []).map((a) => String(a.id)));
+const maRead = MA_POOL ? new ethers.Contract(MA_POOL, ["function isSpent(uint256) view returns (bool)", "function isKnownRoot(uint256) view returns (bool)"], provider) : null;
+const native =
+  process.env.RELAYER_SEED && MA
+    ? await (await import("./native.ts")).startNativeRelayer({ ws: process.env.PORTALDOT_WS || deployment.substrateWs, seed: process.env.RELAYER_SEED, ma: { pool: MA_POOL, assets: MA.assets }, nativeFee: SHIELDED_FEE })
+    : null;
+
 class ClientError extends Error {
   constructor(status, message) {
     super(message);
@@ -159,108 +172,182 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.get("/status", async (_req, res) => {
   res.json({
-    relayer: wallet.address,
+    relayer: wallet?.address ?? null,
     chainId: CHAIN_ID,
     network: deployment.network,
     feeBps: Number(FEE_BPS),
     crossVm: crossVmEnabled(),
     pools: deployment.contracts.pools,
     tokens: deployment.contracts.tokens || {},
-    fees: await quotes(), // pool -> exact fee (pool units) to bind into the proof
+    fees: wallet ? await quotes() : {}, // pool -> exact fee (pool units) to bind into the proof
     // private balance: bind `relayer` and at least `fee` (18-decimal wei) into the proof
-    shielded: SHIELDED_POOL ? { pool: SHIELDED_POOL, fee: SHIELDED_FEE.toString() } : null,
+    shielded: SHIELDED_POOL && wallet ? { pool: SHIELDED_POOL, fee: SHIELDED_FEE.toString() } : null,
+    // multi-asset private balance and private swaps: bind `relayer` (also the swap
+    // counterparty) and at least the fee for the transaction's asset
+    multiAsset: native
+      ? { pool: MA_POOL, relayer: native.evm, fees: Object.fromEntries(Object.entries(await native.fees()).map(([k, v]) => [k, v.toString()])), assets: MA.assets }
+      : null,
   });
 });
+
+/**
+ * Validate a join-split proof request (single- or multi-asset) exactly as the contract will,
+ * plus a local Groth16 check, so a bad request never costs gas. Returns the call arguments.
+ */
+function parseJoinSplit(body, { multi, relayer, minFee, vk }) {
+  const { args, extData } = body || {};
+  if (!args || !extData) throw new ClientError(400, "missing args or extData");
+  const a = point(args.a, 2, "a").map((x) => fieldStr(x, BASE, "a"));
+  const b = point(args.b, 2, "b").map((row) => point(row, 2, "b").map((x) => fieldStr(x, BASE, "b")));
+  const c = point(args.c, 2, "c").map((x) => fieldStr(x, BASE, "c"));
+  const root = fieldStr(args.root, FIELD, "root");
+  const publicAmount = fieldStr(args.publicAmount, FIELD, "publicAmount");
+  const extDataHash = fieldStr(args.extDataHash, FIELD, "extDataHash");
+  const nullifiers = point(args.inputNullifiers, 2, "inputNullifiers").map((x) => fieldStr(x, FIELD, "inputNullifier"));
+  const commitments = point(args.outputCommitments, 2, "outputCommitments").map((x) => fieldStr(x, FIELD, "outputCommitment"));
+  if (nullifiers[0] === nullifiers[1]) throw new ClientError(400, "duplicate nullifiers");
+  let publicAsset = "0", swapAsset = "0", swapAmount = "0";
+  if (multi) {
+    publicAsset = fieldStr(args.publicAsset, FIELD, "publicAsset");
+    swapAsset = fieldStr(args.swapAsset, FIELD, "swapAsset");
+    swapAmount = fieldStr(args.swapAmount, MAX_EXT_AMOUNT, "swapAmount");
+    if (!MA_ASSET_IDS.has(publicAsset) || !MA_ASSET_IDS.has(swapAsset)) throw new ClientError(400, "unknown asset");
+  }
+
+  if (!ethers.isAddress(extData.recipient)) throw new ClientError(400, "invalid recipient");
+  if (!ethers.isAddress(extData.relayer) || ethers.getAddress(extData.relayer) !== relayer) {
+    throw new ClientError(400, "proof is not bound to this relayer (fetch /status first)");
+  }
+  let extAmount, fee;
+  try {
+    extAmount = BigInt(extData.extAmount);
+    fee = BigInt(extData.fee);
+  } catch {
+    throw new ClientError(400, "invalid extAmount or fee");
+  }
+  // the relayer never funds deposits: it only spends notes the user already holds
+  if (extAmount > 0n || extAmount <= -MAX_EXT_AMOUNT) throw new ClientError(400, "the relayer only submits payments, withdrawals and swaps");
+  if (fee < minFee(publicAsset) || fee >= MAX_EXT_AMOUNT) throw new ClientError(400, "fee below the relayer's quote (fetch /status)");
+  if (extAmount < 0n && ethers.getAddress(extData.recipient) === ethers.ZeroAddress) throw new ClientError(400, "withdrawal needs a recipient");
+  for (const k of ["encryptedOutput1", "encryptedOutput2"]) {
+    if (!ethers.isHexString(extData[k]) || ethers.dataLength(extData[k]) > MAX_ENCRYPTED_OUTPUT_BYTES) throw new ClientError(400, `invalid ${k}`);
+  }
+  const ext = {
+    recipient: ethers.getAddress(extData.recipient),
+    extAmount,
+    relayer,
+    fee,
+    encryptedOutput1: extData.encryptedOutput1,
+    encryptedOutput2: extData.encryptedOutput2,
+  };
+
+  // the same binding checks the contract makes, before spending any gas
+  const hash = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode([EXT_DATA_TYPE], [ext]))) % FIELD;
+  if (hash.toString() !== extDataHash) throw new ClientError(400, "extDataHash does not match extData");
+  const signed = extAmount - fee;
+  const expected = signed >= 0n ? signed : FIELD + signed;
+  if (expected.toString() !== publicAmount) throw new ClientError(400, "publicAmount does not match extAmount and fee");
+
+  const signals = multi
+    ? [root, publicAmount, extDataHash, publicAsset, swapAsset, swapAmount, ...nullifiers, ...commitments]
+    : [root, publicAmount, extDataHash, ...nullifiers, ...commitments];
+  const callArgs = multi
+    ? { a, b, c, root, publicAmount, extDataHash, publicAsset, swapAsset, swapAmount, inputNullifiers: nullifiers, outputCommitments: commitments }
+    : { a, b, c, root, publicAmount, extDataHash, inputNullifiers: nullifiers, outputCommitments: commitments };
+  return { args: callArgs, ext, nullifiers, root, signals, vk, a, b, c, swap: BigInt(swapAmount) > 0n };
+}
+
+/** Nullifier locks, spent/root checks and the local proof check shared by every route. */
+async function preflight(p, poolRead, locks) {
+  for (const n of p.nullifiers) if (inFlight.has(n)) throw new ClientError(409, "transaction already in progress");
+  for (const n of p.nullifiers) {
+    inFlight.add(n);
+    locks.push(n);
+  }
+  for (const n of p.nullifiers) if (await poolRead.isSpent(n)) throw new ClientError(409, "note already spent");
+  if (!(await poolRead.isKnownRoot(p.root))) throw new ClientError(409, "unknown or stale root; rebuild the proof");
+  const snarkProof = {
+    pi_a: [p.a[0], p.a[1], "1"],
+    pi_b: [[p.b[0][1], p.b[0][0]], [p.b[1][1], p.b[1][0]], ["1", "0"]],
+    pi_c: [p.c[0], p.c[1], "1"],
+    protocol: "groth16",
+    curve: "bn128",
+  };
+  if (!(await snarkjs.groth16.verify(p.vk, p.signals, snarkProof))) throw new ClientError(400, "invalid proof");
+}
+
+function fail(res, e) {
+  if (e instanceof ClientError) return res.status(e.status).json({ error: e.message });
+  if (e?.status === 409) return res.status(409).json({ error: e.message });
+  console.error("[relay] internal error:", e);
+  res.status(500).json({ error: "relay failed" });
+}
 
 /** Relay a join-split `transact` (private payment or withdrawal) for the private balance. */
 app.post("/transact", rateLimit, async (req, res) => {
   const locks = [];
   try {
-    if (!SHIELDED_POOL) throw new ClientError(404, "no private pool on this network");
-    const { args, extData } = req.body || {};
-    if (!args || !extData) throw new ClientError(400, "missing args or extData");
-
-    const a = point(args.a, 2, "a").map((x) => fieldStr(x, BASE, "a"));
-    const b = point(args.b, 2, "b").map((row) => point(row, 2, "b").map((x) => fieldStr(x, BASE, "b")));
-    const c = point(args.c, 2, "c").map((x) => fieldStr(x, BASE, "c"));
-    const root = fieldStr(args.root, FIELD, "root");
-    const publicAmount = fieldStr(args.publicAmount, FIELD, "publicAmount");
-    const extDataHash = fieldStr(args.extDataHash, FIELD, "extDataHash");
-    const nullifiers = point(args.inputNullifiers, 2, "inputNullifiers").map((x) => fieldStr(x, FIELD, "inputNullifier"));
-    const commitments = point(args.outputCommitments, 2, "outputCommitments").map((x) => fieldStr(x, FIELD, "outputCommitment"));
-    if (nullifiers[0] === nullifiers[1]) throw new ClientError(400, "duplicate nullifiers");
-
-    if (!ethers.isAddress(extData.recipient)) throw new ClientError(400, "invalid recipient");
-    if (!ethers.isAddress(extData.relayer) || ethers.getAddress(extData.relayer) !== wallet.address) {
-      throw new ClientError(400, "proof is not bound to this relayer (fetch /status first)");
-    }
-    let extAmount, fee;
-    try {
-      extAmount = BigInt(extData.extAmount);
-      fee = BigInt(extData.fee);
-    } catch {
-      throw new ClientError(400, "invalid extAmount or fee");
-    }
-    // the relayer never funds deposits: it only spends notes the user already holds
-    if (extAmount > 0n || extAmount <= -MAX_EXT_AMOUNT) throw new ClientError(400, "the relayer only submits payments and withdrawals");
-    if (fee < SHIELDED_FEE || fee >= MAX_EXT_AMOUNT) throw new ClientError(400, "fee below the relayer's quote (fetch /status)");
-    if (extAmount < 0n && ethers.getAddress(extData.recipient) === ethers.ZeroAddress) throw new ClientError(400, "withdrawal needs a recipient");
-    for (const k of ["encryptedOutput1", "encryptedOutput2"]) {
-      if (!ethers.isHexString(extData[k]) || ethers.dataLength(extData[k]) > MAX_ENCRYPTED_OUTPUT_BYTES) throw new ClientError(400, `invalid ${k}`);
-    }
-    const ext = {
-      recipient: ethers.getAddress(extData.recipient),
-      extAmount,
-      relayer: wallet.address,
-      fee,
-      encryptedOutput1: extData.encryptedOutput1,
-      encryptedOutput2: extData.encryptedOutput2,
-    };
-
-    // the same binding checks the contract makes, before spending any gas
-    const hash = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode([EXT_DATA_TYPE], [ext]))) % FIELD;
-    if (hash.toString() !== extDataHash) throw new ClientError(400, "extDataHash does not match extData");
-    const signed = extAmount - fee;
-    const expected = signed >= 0n ? signed : FIELD + signed;
-    if (expected.toString() !== publicAmount) throw new ClientError(400, "publicAmount does not match extAmount and fee");
-
-    for (const n of nullifiers) {
-      if (inFlight.has(n)) throw new ClientError(409, "transaction already in progress");
-    }
-    for (const n of nullifiers) {
-      inFlight.add(n);
-      locks.push(n);
-    }
-
+    if (!SHIELDED_POOL || !wallet) throw new ClientError(404, "no private pool relaying on this relayer");
+    const p = parseJoinSplit(req.body, { multi: false, relayer: wallet.address, minFee: () => SHIELDED_FEE, vk: txVkey });
     const pool = new ethers.Contract(SHIELDED_POOL, SHIELDED_ABI, wallet);
-    for (const n of nullifiers) if (await pool.isSpent(n)) throw new ClientError(409, "note already spent");
-    if (!(await pool.isKnownRoot(root))) throw new ClientError(409, "unknown or stale root; rebuild the proof");
-
-    const snarkProof = {
-      pi_a: [a[0], a[1], "1"],
-      pi_b: [[b[0][1], b[0][0]], [b[1][1], b[1][0]], ["1", "0"]],
-      pi_c: [c[0], c[1], "1"],
-      protocol: "groth16",
-      curve: "bn128",
-    };
-    if (!(await snarkjs.groth16.verify(txVkey, [root, publicAmount, extDataHash, ...nullifiers, ...commitments], snarkProof))) {
-      throw new ClientError(400, "invalid proof");
-    }
-
-    const callArgs = [{ a, b, c, root, publicAmount, extDataHash, inputNullifiers: nullifiers, outputCommitments: commitments }, ext];
-    const gas = await pool.transact.estimateGas(...callArgs);
+    await preflight(p, pool, locks);
+    const gas = await pool.transact.estimateGas(p.args, p.ext);
     const { gasPrice } = await provider.getFeeData();
     const cost = gas * (gasPrice ?? 0n);
-    if (ENFORCE_PROFIT && cost > fee) throw new ClientError(503, "fee does not cover gas right now; retry later");
-
-    const tx = await pool.transact(...callArgs, { gasLimit: (gas * 12n) / 10n });
+    if (ENFORCE_PROFIT && cost > p.ext.fee) throw new ClientError(503, "fee does not cover gas right now; retry later");
+    const tx = await pool.transact(p.args, p.ext, { gasLimit: (gas * 12n) / 10n });
     const receipt = await tx.wait();
-    console.log(`[relay] transact ${receipt.hash} fee=${fee} gasCost=${cost} withdraw=${extAmount < 0n}`);
-    res.json({ txHash: receipt.hash, blockHash: receipt.blockHash, fee: fee.toString() });
+    console.log(`[relay] transact ${receipt.hash} fee=${p.ext.fee} gasCost=${cost} withdraw=${p.ext.extAmount < 0n}`);
+    res.json({ txHash: receipt.hash, blockHash: receipt.blockHash, fee: p.ext.fee.toString() });
   } catch (e) {
-    if (e instanceof ClientError) return res.status(e.status).json({ error: e.message });
-    console.error("[relay] internal error:", e);
-    res.status(500).json({ error: "relay failed" });
+    fail(res, e);
+  } finally {
+    for (const n of locks) inFlight.delete(n);
+  }
+});
+
+// --- multi-asset private balance (native relayer) ---
+
+/** Quote a private swap: how much of `buy` the relayer will deliver for `amountIn` of `sell`. */
+app.get("/ma/quote", rateLimit, async (req, res) => {
+  try {
+    if (!native) throw new ClientError(404, "no multi-asset relaying on this relayer");
+    const sell = Number(req.query.sell), buy = Number(req.query.buy);
+    let amountIn;
+    try {
+      amountIn = BigInt(String(req.query.amountIn));
+    } catch {
+      throw new ClientError(400, "invalid amountIn");
+    }
+    if (amountIn <= 0n || amountIn >= MAX_EXT_AMOUNT || !MA_ASSET_IDS.has(String(sell)) || !MA_ASSET_IDS.has(String(buy)) || sell === buy) {
+      throw new ClientError(400, "invalid pair or amount");
+    }
+    const q = await native.quoteSwap(sell, buy, amountIn);
+    res.json({ relayer: native.evm, sell, buy, amountIn: amountIn.toString(), amountOut: q.amountOut.toString(), fee: q.fee.toString(), priceImpactBps: q.priceImpactBps });
+  } catch (e) {
+    fail(res, e);
+  }
+});
+
+/** Relay a multi-asset payment/withdrawal (`swapAmount` 0) or execute a private swap. */
+app.post("/ma/transact", rateLimit, async (req, res) => {
+  const locks = [];
+  try {
+    if (!native) throw new ClientError(404, "no multi-asset relaying on this relayer");
+    const fees = await native.fees();
+    const p = parseJoinSplit(req.body, { multi: true, relayer: native.evm, minFee: (asset) => fees[Number(asset)], vk: maVkey });
+    if (p.swap) {
+      // we are the counterparty: the pool pays us only if we deliver in the same call
+      if (p.ext.recipient !== native.evm || p.ext.extAmount >= 0n || p.args.swapAsset === p.args.publicAsset) throw new ClientError(400, "malformed swap");
+    } else if (p.args.swapAsset !== "0") {
+      throw new ClientError(400, "malformed transaction");
+    }
+    await preflight(p, maRead, locks);
+    const r = p.swap ? await native.swap(p.args, p.ext) : await native.transact(p.args, p.ext);
+    console.log(`[relay] ma ${p.swap ? "swap" : "transact"} ${r.blockHash} asset=${p.args.publicAsset} fee=${p.ext.fee}`);
+    res.json({ txHash: r.txHash, blockHash: r.blockHash, fee: p.ext.fee.toString() });
+  } catch (e) {
+    fail(res, e);
   } finally {
     for (const n of locks) inFlight.delete(n);
   }
@@ -269,6 +356,7 @@ app.post("/transact", rateLimit, async (req, res) => {
 app.post("/withdraw", rateLimit, async (req, res) => {
   let lockKey = null;
   try {
+    if (!wallet) throw new ClientError(404, "fixed-pool relaying is not enabled on this relayer");
     const body = req.body || {};
     if (!ethers.isAddress(body.poolAddress)) throw new ClientError(400, "invalid poolAddress");
     const poolAddress = ethers.getAddress(body.poolAddress);
@@ -333,4 +421,4 @@ app.post("/withdraw", rateLimit, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`Umbra relayer on :${PORT} as ${wallet.address} (${deployment.network})`));
+app.listen(PORT, () => console.log(`Umbra relayer on :${PORT} (${deployment.network}) evm=${wallet?.address ?? "-"} native=${native ? `${native.account} (${native.evm})` : "-"}`));

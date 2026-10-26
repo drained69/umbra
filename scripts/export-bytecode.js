@@ -23,6 +23,8 @@ const contracts = {
   UmbraPool: code("UmbraPool"),
   UmbraTokenPool: code("UmbraTokenPool"),
   UmbraShieldedPool: code("UmbraShieldedPool"),
+  MultiAssetVerifier: code("MultiAssetVerifier"),
+  UmbraMultiAssetPool: code("UmbraMultiAssetPool"),
   UmbraCoprocessorBridge: code("UmbraCoprocessorBridge"),
   DeployHarness: code("DeployHarness"), // read-only cost estimation only
 };
