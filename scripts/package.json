@@ -6,7 +6,9 @@
   "description": "Deploy + ops scripts for Umbra on Portaldot V3 testnet",
   "scripts": {
     "deploy": "node deploy.js",
-    "preflight": "node preflight.js"
+    "preflight": "node preflight.js",
+    "privacy-routes": "node privacy-route-readiness.js",
+    "bridge-relay": "node bridge-relay.js"
   },
   "dependencies": {
     "@noble/hashes": "1.5.0",
