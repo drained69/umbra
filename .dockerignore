@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+**/node_modules
+**/dist
+frontend/public/zk
+circuits
+contracts
+coprocessor
+deployments
+docs
+relayer
+scripts
+sdk/test
+*.md
+.env*
