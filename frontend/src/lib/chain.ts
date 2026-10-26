@@ -54,6 +54,24 @@ export const readProvider: ethers.Provider = HAS_EVM_RPC
   ? new ethers.JsonRpcProvider(DEPLOYMENT.rpc, Number(DEPLOYMENT.chainId), { staticNetwork: true })
   : new ReviveProvider(getApi, Number(DEPLOYMENT.chainId));
 
+/**
+ * Pools whose Groth16 proofs are verified in Portaldot's WASM VM (docs/CROSS_VM.md): the
+ * ink! coprocessor runs the pairing check and the EVM bridge the pool trusts records it.
+ */
+export interface CrossVmConfig {
+  coprocessor: string; // SS58 (pallet-contracts)
+  coprocessorCodeHash: string;
+  bridge: string;
+  attestor: string; // the only EVM account the bridge accepts attestations from
+  pools: Record<string, string>; // tPOT denomination -> pool
+  deployBlock: number;
+}
+export const CROSS_VM: CrossVmConfig | null = DEPLOYMENT.crossVm ?? null;
+
+export function isCrossVmPool(address: string | undefined): boolean {
+  return !!CROSS_VM && !!address && Object.values(CROSS_VM.pools).some((p) => p.toLowerCase() === address.toLowerCase());
+}
+
 /** Shieldable assets on this deployment: native tPOT plus Portaldot assets (pUSD…). */
 export interface AssetInfo {
   symbol: string;
@@ -66,7 +84,7 @@ export interface AssetInfo {
 
 export function assets(): AssetInfo[] {
   const out: AssetInfo[] = [
-    { symbol: NATIVE, decimals: Number(DEPLOYMENT.decimals), token: ethers.ZeroAddress, assetId: null, pools: DEPLOYMENT.contracts.pools || {} },
+    { symbol: NATIVE, decimals: Number(DEPLOYMENT.decimals), token: ethers.ZeroAddress, assetId: null, pools: { ...(DEPLOYMENT.contracts.pools || {}), ...(CROSS_VM?.pools || {}) } },
   ];
   for (const [symbol, t] of Object.entries<any>(DEPLOYMENT.contracts.tokens || {})) {
     out.push({

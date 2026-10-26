@@ -7,13 +7,18 @@ import {
   resolveRecipient,
   buildReviveCall,
   sendNative,
+  evmAddressOf,
+  groth16Words,
+  withdrawSignals,
+  verifyInWasmAndAttest,
   POOL_ABI,
   POOL_ERRORS_ABI,
+  type CoprocessorArtifact,
   type Note,
   type WithdrawProof,
 } from "@umbra/sdk";
 import PrivacyVisualizer from "./PrivacyVisualizer";
-import { DEPLOYMENT, format, getApi, short, blockLink, type AssetInfo } from "../lib/chain";
+import { CROSS_VM, DEPLOYMENT, format, getApi, isCrossVmPool, short, blockLink, type AssetInfo } from "../lib/chain";
 import type { Wallet } from "../lib/wallet";
 
 const ARTIFACTS = { wasm: "/zk/withdraw.wasm", zkey: "/zk/withdraw_final.zkey" };
@@ -27,13 +32,18 @@ interface Props {
 }
 
 const STEPS = ["Check note & recipient", "Scan pool & build Merkle path", "Generate ZK proof", "Submit withdrawal"];
+const CROSS_VM_STEPS = [...STEPS.slice(0, 3), "Verify in WASM VM + attest on EVM", "Submit withdrawal"];
 
 export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Props) {
+  // WASM-verified pool: the proof is checked by the ink! coprocessor before the pool accepts it.
+  const crossVm = isCrossVmPool(client.address) ? CROSS_VM : null;
+  const steps = crossVm ? CROSS_VM_STEPS : STEPS;
   const [noteStr, setNoteStr] = useState("");
   const [recipientInput, setRecipientInput] = useState("");
-  const [useRelayer, setUseRelayer] = useState(Boolean(relayerUrl));
+  const [useRelayer, setUseRelayer] = useState(Boolean(relayerUrl) && !crossVm);
   const [step, setStep] = useState(-1);
   const [status, setStatus] = useState<{ t: "ok" | "err" | "info"; m: string; href?: string } | null>(null);
+  const [wasmRef, setWasmRef] = useState<{ m: string; href?: string } | null>(null);
   const [proof, setProof] = useState<WithdrawProof | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   const [resolved, setResolved] = useState<string>("");
@@ -41,8 +51,15 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
   async function run() {
     setStatus(null);
     setProof(null);
+    setWasmRef(null);
     try {
       setStep(0);
+      if (crossVm) {
+        // Checked before proving: only the bridge's attestor can record the WASM verdict.
+        if (wallet.kind !== "native") throw new Error("This pool's proofs are verified in Portaldot's WASM VM, which an EVM wallet can't call. Connect the Portaldot Extension.");
+        const me = await evmAddressOf(await getApi(), wallet.account);
+        if (me !== crossVm.attestor) throw new Error(`Only the bridge attestor (${short(crossVm.attestor)}) can attest withdrawals from this pool in this prototype.`);
+      }
       const n = parseNote(noteStr);
       setNote(n);
       if (await client.isSpent(n)) throw new Error("this note was already spent");
@@ -76,7 +93,17 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
       const p = await client.buildWithdraw(n, recipient, relayerAddr, fee, ARTIFACTS); // also checks the recipient can receive
       setProof(p);
 
-      setStep(3);
+      if (crossVm && wallet.kind === "native") {
+        setStep(3);
+        setStatus({ t: "info", m: "Sign one transaction: the WASM coprocessor checks the proof, then the EVM bridge records it. If WASM rejects the proof, neither happens." });
+        const api = await getApi();
+        const art = (await import("@umbra/artifacts/coprocessor.json")).default as CoprocessorArtifact;
+        const words = groth16Words(p, withdrawSignals(p.root, p.nullifierHash, recipient, relayerAddr, fee));
+        const att = await verifyInWasmAndAttest(api, wallet.account, { signer: wallet.signer }, { coprocessor: crossVm.coprocessor, bridge: crossVm.bridge, art }, words);
+        setWasmRef(att.tx ? { m: `Verified in the WASM VM and attested in block ${short(att.tx.blockHash)}`, href: blockLink(att.tx.blockHash) } : { m: "This proof was already verified in the WASM VM and attested." });
+      }
+
+      setStep(steps.length - 1);
       if (useRelayer) {
         const res = await fetch(`${relayerUrl}/withdraw`, {
           method: "POST",
@@ -98,7 +125,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
         const r = await sendNative(api, wallet.account, [call], { signer: wallet.signer });
         setStatus({ t: "ok", m: `Withdrawn in block ${short(r.blockHash)}`, href: blockLink(r.blockHash) });
       }
-      setStep(4);
+      setStep(steps.length);
     } catch (e: any) {
       setStatus({ t: "err", m: e?.message || String(e) });
       setStep(-1);
@@ -122,20 +149,26 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
             note to it first (also private), then this one.
           </p>
         )}
-        {relayerUrl ? <label className="row" style={{ marginTop: 14 }}>
+        {crossVm ? <p className="hint withdrawal-route">This pool's proofs are verified in Portaldot's WASM VM. Your Portaldot Extension signs the verification and then the withdrawal, so your account is the visible sender. The bridge trusts its attestor ({short(crossVm.attestor)}).</p> : relayerUrl ? <label className="row" style={{ marginTop: 14 }}>
           <input type="checkbox" style={{ width: 18 }} checked={useRelayer} onChange={(e) => setUseRelayer(e.target.checked)} />
           <span style={{ color: "var(--ink)" }}>Use relayer (keeps your wallet off the withdrawal transaction)</span>
         </label> : <p className="hint withdrawal-route">Withdrawals are signed by your connected wallet. A gasless relayer is not connected to this app yet.</p>}
-        <button className="primary" style={{ marginTop: 16 }} onClick={run} disabled={!noteStr.trim() || !recipientInput.trim() || (step >= 0 && step < 4)}>
+        <button className="primary" style={{ marginTop: 16 }} onClick={run} disabled={!noteStr.trim() || !recipientInput.trim() || (step >= 0 && step < steps.length)}>
           Withdraw
         </button>
         <ol className="steps">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <li key={i} className={step > i ? "done" : step === i ? "active" : ""}>
               <span className="dot">{step > i ? "✓" : i + 1}</span> {s}
             </li>
           ))}
         </ol>
+        {wasmRef && (
+          <div className="status ok" role="status">
+            {wasmRef.m}{" "}
+            {wasmRef.href && <a href={wasmRef.href} target="_blank" rel="noreferrer">view ↗</a>}
+          </div>
+        )}
         {status && (
           <div className={`status ${status.t}`} role={status.t === "err" ? "alert" : "status"}>
             {status.m}{" "}
@@ -159,7 +192,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
               { k: "recipient", v: resolved },
               { k: "pool amount", v: `fixed ${asset.symbol} denomination` },
               { k: "link to deposit", v: "not disclosed by the proof; metadata can still narrow candidates" },
-              { k: "verification", v: DEPLOYMENT.verifierMode === "coprocessor" ? "Groth16 proof checked by the WASM coprocessor" : "Groth16 proof checked on-chain" },
+              { k: "verification", v: crossVm ? "Groth16 proof checked by the WASM coprocessor, then attested on the EVM bridge" : "Groth16 proof checked on-chain in the EVM" },
             ]}
             privateRows={[
               { k: "which note", v: "hidden by ZK Merkle membership" },

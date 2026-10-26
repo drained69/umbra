@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ethers } from "ethers";
 import { UmbraPoolClient, UmbraNative, exportViewingKey, type Note } from "@umbra/sdk";
-import { DEPLOYMENT, NATIVE, HAS_EVM_RPC, assets, format, getApi, readProvider, short, blockLink, PORTALDOT_EXTENSION_URL } from "./lib/chain";
+import { DEPLOYMENT, NATIVE, HAS_EVM_RPC, assets, isCrossVmPool, format, getApi, readProvider, short, blockLink, PORTALDOT_EXTENSION_URL } from "./lib/chain";
 import { connectEvm, connectNative, getViewingKey, listNativeAccounts, restoreViewingKey, type NativeAccount, type Wallet } from "./lib/wallet";
 import type { TxRef } from "./components/DepositPanel";
 import DeploymentSummary from "./components/DeploymentSummary";
@@ -10,6 +10,7 @@ const DepositPanel = lazy(() => import("./components/DepositPanel"));
 const WithdrawPanel = lazy(() => import("./components/WithdrawPanel"));
 const AuditorPanel = lazy(() => import("./components/AuditorPanel"));
 const DeployPanel = lazy(() => import("./components/DeployPanel"));
+const CrossVmDeployPanel = lazy(() => import("./components/CrossVmDeployPanel"));
 const PrivateTransferPanel = lazy(() => import("./components/PrivateTransferPanel"));
 
 type Tab = "overview" | "deposit" | "withdraw" | "transfer" | "auditor";
@@ -24,6 +25,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("overview");
   const [viewingKey, setViewingKey] = useState<Uint8Array | null>(null);
   const [showDeploy, setShowDeploy] = useState(() => new URLSearchParams(location.search).has("deploy"));
+  const [crossVmSetup, setCrossVmSetup] = useState(() => new URLSearchParams(location.search).has("crossvm"));
   const accountPickerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!nativeAccounts) return;
@@ -56,8 +58,10 @@ export default function App() {
   const [assetSym, setAssetSym] = useState(assetList[0]?.symbol ?? "tPOT");
   const asset = assetList.find((a) => a.symbol === assetSym);
   const denoms = asset ? Object.keys(asset.pools) : [];
-  const [denom, setDenom] = useState<string>(denoms[0] ?? "");
-  useEffect(() => setDenom(Object.keys(asset?.pools ?? {})[0] ?? ""), [assetSym]);
+  // Default to an EVM-verified pool: withdrawing from a WASM-verified one needs its attestor.
+  const defaultDenom = (pools: Record<string, string>) => Object.keys(pools).find((d) => !isCrossVmPool(pools[d])) ?? Object.keys(pools)[0] ?? "";
+  const [denom, setDenom] = useState<string>(() => defaultDenom(asset?.pools ?? {}));
+  useEffect(() => setDenom(defaultDenom(asset?.pools ?? {})), [assetSym]);
   const poolAddr = asset?.pools[denom];
   const configured = !!poolAddr && poolAddr !== ethers.ZeroAddress;
 
@@ -140,7 +144,7 @@ export default function App() {
     { id: "auditor", label: "Activity & keys", detail: "Read-only access", icon: "04" },
   ];
   const current = navigation.find((item) => item.id === tab)!;
-  const openTab = (next: Tab) => { setTab(next); setShowDeploy(false); };
+  const openTab = (next: Tab) => { setTab(next); setShowDeploy(false); setCrossVmSetup(false); };
   const pageTitle = showDeploy ? "Contracts" : current.label;
   const pageDescription = showDeploy
     ? "Review the contracts configured for this app."
@@ -172,7 +176,8 @@ export default function App() {
             {showDeploy ? <>
               <div className="page-kicker">INFRASTRUCTURE <span> / </span> 01</div>
               <div className="page-heading"><div><h1>Contract registry</h1><p>{pageDescription}</p></div><button className="subtle-button" onClick={() => openTab("overview")}>← Overview</button></div>
-              {deploymentReady ? <DeploymentSummary onBack={() => setShowDeploy(false)} /> : wallet?.kind === "native" ? <Suspense fallback={<div className="loading-panel" role="status">Loading deployment tools…</div>}><DeployPanel key={wallet.account} wallet={wallet} /></Suspense> : <div className="wallet-prompt"><span className="prompt-icon">⌁</span><h2>Connect to deploy</h2><p>Your Portaldot Extension signs each deployment step. Your keys stay in your wallet.</p><button className="primary" onClick={pickNative}>Connect Portaldot <span>↗</span></button></div>}
+              {crossVmSetup && deploymentReady ? (wallet?.kind === "native" ? <Suspense fallback={<div className="loading-panel" role="status">Loading deployment tools…</div>}><CrossVmDeployPanel key={wallet.account} wallet={wallet} /></Suspense> : <div className="wallet-prompt"><span className="prompt-icon">⌁</span><h2>Connect to deploy</h2><p>Your Portaldot Extension signs the WASM and EVM deployment steps. Your keys stay in your wallet.</p><button className="primary" onClick={pickNative}>Connect Portaldot <span>↗</span></button></div>)
+                : deploymentReady ? <DeploymentSummary onBack={() => setShowDeploy(false)} onSetUpCrossVm={() => setCrossVmSetup(true)} /> : wallet?.kind === "native" ? <Suspense fallback={<div className="loading-panel" role="status">Loading deployment tools…</div>}><DeployPanel key={wallet.account} wallet={wallet} /></Suspense> : <div className="wallet-prompt"><span className="prompt-icon">⌁</span><h2>Connect to deploy</h2><p>Your Portaldot Extension signs each deployment step. Your keys stay in your wallet.</p><button className="primary" onClick={pickNative}>Connect Portaldot <span>↗</span></button></div>}
             </> : tab === "overview" ? <>
               <section className="hero-panel" aria-labelledby="hero-title">
                 <div className="hero-visual" aria-hidden="true"><svg viewBox="0 0 480 270" fill="none"><circle cx="240" cy="135" r="114" stroke="currentColor" strokeDasharray="3 8" opacity=".35"/><circle cx="240" cy="135" r="79" stroke="currentColor" opacity=".24"/><path d="M64 135h82m188 0h82M240 20v37m0 156v37" stroke="currentColor" opacity=".55"/><path d="M146 135c31-42 56-62 94-62s63 20 94 62c-31 42-56 62-94 62s-63-20-94-62Z" stroke="currentColor" strokeWidth="2"/><circle cx="240" cy="135" r="43" stroke="currentColor" strokeWidth="2"/><circle cx="240" cy="135" r="13" fill="currentColor"/><circle cx="64" cy="135" r="5" fill="currentColor"/><circle cx="416" cy="135" r="5" fill="currentColor"/><text x="20" y="116">PUBLIC INPUT</text><text x="356" y="116">PRIVATE STATE</text></svg></div>
@@ -197,7 +202,7 @@ export default function App() {
               <div className="flow-intro"><div className={`flow-icon ${tab}`}>{current.icon}</div><div><strong>{tab === "deposit" ? "Start with a private note" : tab === "withdraw" ? "Your proof, your withdrawal" : tab === "transfer" ? "Send inside the private pool" : "You decide what to reveal"}</strong><p>{tab === "deposit" ? "Generate a note locally, back it up, then sign your public deposit." : tab === "withdraw" ? "Enter a saved note and recipient to build a proof in your browser." : tab === "transfer" ? "Create a shielded address, save its spend key, then deposit and send." : "Read-only keys can reveal pool history without spending authority."}</p></div><span className="flow-secure">CHECK WHAT IS VISIBLE BELOW</span></div>
               {!wallet ? <div className="wallet-prompt"><span className="prompt-icon">⌁</span><h2>Connect your wallet</h2><p>Connect to use the private pools. Your signing keys never leave your extension.</p><div className="prompt-buttons"><button className="primary" onClick={pickNative}>Connect Portaldot <span>↗</span></button>{HAS_EVM_RPC && <button className="ghost" onClick={pickEvm}>Use EVM wallet</button>}</div></div> : <>
                 {!configured && tab !== "transfer" && <div className="notice-card"><span>ⓘ</span><div><strong>Pool setup required</strong><p>Deploy a pool before using this action.</p></div>{wallet.kind === "native" && <button onClick={() => setShowDeploy(true)}>View setup ↗</button>}</div>}
-                {asset && tab !== "transfer" && <div className="asset-toolbar"><div><span className="toolbar-label">01 · ASSET</span><div className="denoms">{assetList.map((a) => <button key={a.symbol} className={`chip ${a.symbol === assetSym ? "active" : ""}`} aria-pressed={a.symbol === assetSym} onClick={() => setAssetSym(a.symbol)}>{a.symbol}</button>)}</div></div><div><span className="toolbar-label">02 · POOL SIZE</span><div className="denoms">{denoms.map((d) => <button key={d} className={`chip ${d === denom ? "active" : ""}`} aria-pressed={d === denom} onClick={() => setDenom(d)}>{d} {asset.symbol}</button>)}</div></div><div className="toolbar-summary"><span>SELECTED POOL</span><strong>{denom} {asset.symbol}</strong></div></div>}
+                {asset && tab !== "transfer" && <div className="asset-toolbar"><div><span className="toolbar-label">01 · ASSET</span><div className="denoms">{assetList.map((a) => <button key={a.symbol} className={`chip ${a.symbol === assetSym ? "active" : ""}`} aria-pressed={a.symbol === assetSym} onClick={() => setAssetSym(a.symbol)}>{a.symbol}</button>)}</div></div><div><span className="toolbar-label">02 · POOL SIZE</span><div className="denoms">{denoms.map((d) => <button key={d} className={`chip ${d === denom ? "active" : ""}`} aria-pressed={d === denom} onClick={() => setDenom(d)}>{d} {asset.symbol}{isCrossVmPool(asset.pools[d]) ? " · WASM" : ""}</button>)}</div></div><div className="toolbar-summary"><span>SELECTED POOL</span><strong>{denom} {asset.symbol}</strong></div></div>}
                 <Suspense fallback={<div className="loading-panel" role="status">Loading workspace…</div>}>
                   {client && tab === "deposit" && asset && <DepositPanel key={poolAddr} asset={asset} denomLabel={denom} denomWei={ethers.parseUnits(denom, asset.decimals)} viewingKey={viewingKey} deposit={deposit} wallet={wallet} />}
                   {client && tab === "withdraw" && asset && <WithdrawPanel key={poolAddr} client={client} wallet={wallet} asset={asset} relayerUrl={RELAYER_URL} />}
