@@ -1,23 +1,40 @@
 import { ethers } from "ethers";
 import { ApiPromise, WsProvider } from "@polkadot/api";
+import { ReviveProvider } from "@umbra/sdk";
 import deployment from "../config/deployment.json";
 
-export const DEPLOYMENT = deployment as any;
+/** Network presets (verified live). V3 Live = Portaldot mainnet V3.0: no EVM JSON-RPC. */
+export const NETWORKS: Record<string, { network: string; chainId: number; rpc: string | null; substrateWs: string; nativeSymbol: string }> = {
+  testnet: { network: "portaldot-v3-testnet", chainId: 420420777, rpc: "https://test-evm-rpc-v3.portaldot.dev", substrateWs: "wss://test-node-v3.portaldot.dev", nativeSymbol: "tPOT" },
+  v3live: { network: "portaldot-v3-live", chainId: 780780777, rpc: null, substrateWs: "wss://live-v3-node.portaldot.dev", nativeSymbol: "POT" },
+};
+
+/** `?network=v3live` targets another network (e.g. to deploy there); otherwise deployment.json. */
+function selectDeployment(): any {
+  const want = typeof location !== "undefined" ? new URLSearchParams(location.search).get("network") : null;
+  const preset = want ? NETWORKS[want] : null;
+  const base = deployment as any;
+  if (!preset || base.network === preset.network) {
+    const known = Object.values(NETWORKS).find((n) => n.network === base.network);
+    return { nativeSymbol: known?.nativeSymbol ?? "tPOT", ...base };
+  }
+  return { ...preset, decimals: 18, nativeDecimals: 14, deployBlock: 0, verifierMode: "onchain", treeLevels: 20, relayerFeeBps: 50, contracts: { pools: {}, tokens: {} } };
+}
+
+export const DEPLOYMENT = selectDeployment();
+export const NATIVE = DEPLOYMENT.nativeSymbol as string;
+/** Networks without an EVM JSON-RPC (V3 Live) are read through Portaldot's native APIs. */
+export const HAS_EVM_RPC = !!DEPLOYMENT.rpc;
 export const CHAIN_ID_HEX = "0x" + Number(DEPLOYMENT.chainId).toString(16);
 
 export const PORTALDOT_PARAMS = {
   chainId: CHAIN_ID_HEX,
-  chainName: "Portaldot V3 Testnet",
+  chainName: DEPLOYMENT.network,
   // EVM layer exposes native POT with 18 decimals (pallet-revive nativeToEthRatio = 10^4)
   nativeCurrency: { name: "Test POT", symbol: "tPOT", decimals: 18 },
   rpcUrls: [DEPLOYMENT.rpc],
   blockExplorerUrls: ["https://node-console.portaldot.dev/"],
 };
-
-/** Read-only EVM access (no wallet needed): pool state, events, balances. */
-export const readProvider = new ethers.JsonRpcProvider(DEPLOYMENT.rpc, Number(DEPLOYMENT.chainId), {
-  staticNetwork: true,
-});
 
 let apiPromise: Promise<ApiPromise> | null = null;
 /** Native Substrate API (account mapping, native signing, balances). Lazily connected. */
@@ -27,6 +44,15 @@ export function getApi(): Promise<ApiPromise> {
   }
   return apiPromise;
 }
+
+/**
+ * Read access to the contracts (pool state, events, balances): the EVM JSON-RPC when the
+ * network has one, otherwise ReviveProvider over Substrate RPC — verified to return results
+ * identical to the EVM RPC (sdk/test/revive_provider_equivalence.ts).
+ */
+export const readProvider: ethers.Provider = HAS_EVM_RPC
+  ? new ethers.JsonRpcProvider(DEPLOYMENT.rpc, Number(DEPLOYMENT.chainId), { staticNetwork: true })
+  : new ReviveProvider(getApi, Number(DEPLOYMENT.chainId));
 
 /** Shieldable assets on this deployment: native tPOT plus Portaldot assets (pUSD…). */
 export interface AssetInfo {
@@ -40,7 +66,7 @@ export interface AssetInfo {
 
 export function assets(): AssetInfo[] {
   const out: AssetInfo[] = [
-    { symbol: "tPOT", decimals: Number(DEPLOYMENT.decimals), token: ethers.ZeroAddress, assetId: null, pools: DEPLOYMENT.contracts.pools || {} },
+    { symbol: NATIVE, decimals: Number(DEPLOYMENT.decimals), token: ethers.ZeroAddress, assetId: null, pools: DEPLOYMENT.contracts.pools || {} },
   ];
   for (const [symbol, t] of Object.entries<any>(DEPLOYMENT.contracts.tokens || {})) {
     out.push({

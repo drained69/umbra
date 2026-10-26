@@ -1,0 +1,8 @@
+{
+  "network": "portaldot-v3-testnet",
+  "account": "5Dvps2P4hYwZAwDw2qjTdozWUvwXyFCc98o3RJx2eKHAFXv8",
+  "poseidon": {
+    "address": "0x5c4e3060a45f8c6985166e74c1b513a10aa727a1",
+    "blockHash": "0xa06896cce631df00595a6c09ae273a43d11c90ad8932658f18f8b9cdde34657a"
+  }
+}

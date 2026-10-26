@@ -31,7 +31,7 @@ const STEPS = ["Check note & recipient", "Scan pool & build Merkle path", "Gener
 export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Props) {
   const [noteStr, setNoteStr] = useState("");
   const [recipientInput, setRecipientInput] = useState("");
-  const [useRelayer, setUseRelayer] = useState(true);
+  const [useRelayer, setUseRelayer] = useState(Boolean(relayerUrl));
   const [step, setStep] = useState(-1);
   const [status, setStatus] = useState<{ t: "ok" | "err" | "info"; m: string; href?: string } | null>(null);
   const [proof, setProof] = useState<WithdrawProof | null>(null);
@@ -122,10 +122,10 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
             note to it first (also private), then this one.
           </p>
         )}
-        <label className="row" style={{ marginTop: 14 }}>
+        {relayerUrl ? <label className="row" style={{ marginTop: 14 }}>
           <input type="checkbox" style={{ width: 18 }} checked={useRelayer} onChange={(e) => setUseRelayer(e.target.checked)} />
           <span style={{ color: "var(--ink)" }}>Gasless via relayer (recommended — keeps the recipient unlinked)</span>
-        </label>
+        </label> : <p className="hint withdrawal-route">Withdrawals are signed by your connected wallet. A gasless relayer is not connected to this app yet.</p>}
         <button className="primary" style={{ marginTop: 16 }} onClick={run} disabled={step >= 0 && step < 4}>
           Withdraw
         </button>
