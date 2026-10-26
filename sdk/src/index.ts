@@ -15,3 +15,5 @@ export * from "./nativeClient";
 export * from "./nativeDeploy";
 export * from "./reviveProvider";
 export * from "./crossVm";
+export * from "./swap";
+export * from "./payments";

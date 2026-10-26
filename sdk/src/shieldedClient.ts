@@ -18,6 +18,10 @@ export const SHIELDED_POOL_ABI = [
   "event NewNullifier(uint256 indexed nullifier)",
 ];
 
+function largestTwo(notes: Utxo[]): Utxo[] {
+  return [...notes].sort((a, b) => (a.amount === b.amount ? 0 : a.amount > b.amount ? -1 : 1)).slice(0, 2);
+}
+
 export interface ScannedCommitment {
   commitment: bigint;
   index: number;
@@ -85,21 +89,71 @@ export class UmbraShieldedClient {
 
   /** Decrypt every output addressed to `owner`; returns UNSPENT ones by default. */
   async myUtxos(owner: Keypair, includeSpent = false): Promise<Utxo[]> {
+    return (await this.myNotes(owner)).filter((n) => includeSpent || !n.spent).map((n) => n.utxo);
+  }
+
+  /** Every note addressed to `owner` (oldest first), each with its spent flag — one scan. */
+  async myNotes(owner: Keypair): Promise<{ utxo: Utxo; spent: boolean }[]> {
     const scanned = await this.scanCommitments();
-    const mine: Utxo[] = [];
+    const mine: { utxo: Utxo; spent: boolean }[] = [];
     for (const s of scanned) {
       if (!s.encryptedOutput || s.encryptedOutput === "0x") continue;
       const u = Utxo.decrypt(hexToBytes(s.encryptedOutput.slice(2)), owner, s.index);
       // must decrypt AND match the on-chain commitment (rejects forged ciphertexts)
       if (!u || u.commitment() !== s.commitment || u.amount === 0n) continue;
-      if (!includeSpent && (await this.contract.isSpent(u.nullifier()))) continue;
-      mine.push(u);
+      mine.push({ utxo: u, spent: await this.contract.isSpent(u.nullifier()) });
     }
     return mine;
   }
 
   async balance(owner: Keypair): Promise<bigint> {
     return (await this.myUtxos(owner)).reduce((s, u) => s + u.amount, 0n);
+  }
+
+  /** Largest amount one transaction can spend: a join-split takes at most two input notes. */
+  static spendable(notes: Utxo[]): bigint {
+    return largestTwo(notes).reduce((s, u) => s + u.amount, 0n);
+  }
+
+  /**
+   * Plan a payment of `amount` to a shielded address, optionally with an encrypted memo.
+   *  - "private": spends `owner`'s notes; the recipient and amount stay hidden.
+   *  - "wallet":  the payer's wallet deposits the amount straight into the recipient's note;
+   *               the recipient stays hidden but the amount is public as a deposit.
+   */
+  async planPayment(p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: bigint; memo?: string }): Promise<Omit<TransactParams, "artifacts">> {
+    if (p.amount <= 0n) throw new Error("amount must be positive");
+    const payee = new Utxo({ amount: p.amount, keypair: Keypair.fromAddress(p.to), memo: p.memo });
+    if (p.source === "wallet") {
+      return { inputs: [], outputs: [payee], owner: p.owner ?? new Keypair(), extAmount: p.amount };
+    }
+    if (!p.owner) throw new Error("unlock a private account to pay from your private balance");
+    const { inputs, change } = this.selectInputs(await this.myUtxos(p.owner), p.amount);
+    const outputs = [payee];
+    if (change > 0n) outputs.push(new Utxo({ amount: change, keypair: p.owner }));
+    return { inputs, outputs, owner: p.owner, extAmount: 0n };
+  }
+
+  /** Plan a withdrawal of `amount` from `owner`'s private balance to an EVM `recipient`. */
+  async planWithdrawal(owner: Keypair, amount: bigint, recipient: string): Promise<Omit<TransactParams, "artifacts">> {
+    if (amount <= 0n) throw new Error("amount must be positive");
+    const { inputs, change } = this.selectInputs(await this.myUtxos(owner), amount);
+    const outputs = change > 0n ? [new Utxo({ amount: change, keypair: owner })] : [];
+    return { inputs, outputs, owner, extAmount: -amount, recipient };
+  }
+
+  private selectInputs(notes: Utxo[], amount: bigint): { inputs: Utxo[]; change: bigint } {
+    const inputs = largestTwo(notes);
+    const total = inputs.reduce((s, u) => s + u.amount, 0n);
+    if (total < amount) {
+      const all = notes.reduce((s, u) => s + u.amount, 0n);
+      throw new Error(
+        all >= amount
+          ? "your private balance is split across more than two notes and one transaction can spend two — send yourself a smaller amount first to merge notes"
+          : "insufficient private balance"
+      );
+    }
+    return { inputs, change: total - amount };
   }
 
   /** Build + prove a join-split transaction (does not send). */
