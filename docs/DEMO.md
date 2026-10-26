@@ -46,3 +46,12 @@ POT payments private, and it does it using the one thing unique to Portaldot V3:
   onto the same engine."
 - *Business*: "Confidential payments with selective disclosure is where Aztec and
   confidential stablecoins are going; the relayer fee is the revenue model."
+
+## Extended demo: private account transfer
+
+If time permits, open **Private account**. Alice creates a shielded address and backs up
+the spend key, then deposits 5 tPOT. Bob creates his own address and shares the public
+`umbra-addr-…` string. Alice sends 2 tPOT to Bob and keeps 3 as change. Bob restores his
+account in another browser and scans his 2 tPOT balance; he can then withdraw it.
+The output notes and amounts are encrypted, but Alice's gas-paying wallet is public.
+This flow uses the deployed join-split pool; it does not require a new contract.

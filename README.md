@@ -36,6 +36,9 @@ This "right VM for the right job" split is the answer to the question every judg
   No MetaMask, no `0x` key. EVM wallets work too.
 - **Gasless to fresh addresses** via a relayer whose fee is bound into the proof.
 - **Join-split pool** for arbitrary-value private transfers between shielded users.
+- **Private account UI**: create or restore a shielded address, deposit arbitrary tPOT amounts,
+  send encrypted notes to another user, and withdraw from the same account. The signing
+  wallet remains public when it pays gas; the receiver and internal amount are hidden.
 - **Read-only viewing keys**: reveal your history to an auditor you choose — never spend power.
 - **Built for Portaldot's storage economics**: deposits allocate no storage (was 8.96 tPOT
   locked per 1 tPOT deposit before the redesign). See
@@ -48,7 +51,7 @@ Audited internally in two passes — see [`AUDIT_REPORT.md`](AUDIT_REPORT.md): 2
 
 | Layer | Evidence | Command |
 |---|---|---|
-| Contracts (tPOT/asset/join-split pools, factory, bridge) | **47 tests** with the real Poseidon bytecode: real Groth16 proofs, on-chain roots == SDK roots, storage-slot properties, audit regressions | `make test` |
+| Contracts (tPOT/asset/join-split pools, factory, bridge, atomic swap) | **64 tests** with the real Poseidon bytecode: real Groth16 proof checks for existing pools, on-chain roots == SDK roots, storage-slot properties, audit regressions, and mock-verifier coordination tests for the new bridge and swap | `make test` |
 | WASM coprocessor core | **7 tests**: verifies the *same* real proofs as Solidity; rejects tampering, off-curve, non-canonical | `make coprocessor-test` |
 | Full system on a real EVM | **30 E2E checks**: real deploy pipeline → tPOT + pUSD ZK withdrawals, join-split flow, viewing keys, relayer | `make e2e` |
 | Live Portaldot V3 testnet | **15 preflight + 14 native-integration checks** (read-only): precompiles, revive constants, asset precompiles, `5…` accounts calling contracts | `make preflight`, `make live` |
@@ -75,6 +78,22 @@ Target for the hackathon: **Portaldot V3 testnet**. Portaldot also runs **Portal
 native extrinsics, but confirm its status with Portaldot and complete a trusted-setup ceremony
 + independent audit first. The legacy mainnet has no EVM. Details:
 [`docs/MAINNET.md`](docs/MAINNET.md).
+
+## Privacy-layer roadmap
+
+Umbra's next product is a Portaldot privacy hub for payments, private batch swaps, and
+Ethereum Sepolia ↔ Portaldot testnet transfers. The first proposed DEX pair is tPOT ↔ pUSDT;
+pUSD is a later target because the observed pUSD pair has no liquidity. Neither swap nor bridge
+feature is live yet. The architecture, privacy boundaries, evidence gates, and demo order
+are in [`docs/PRIVACY_LAYER.md`](docs/PRIVACY_LAYER.md). Run
+`node scripts/privacy-route-readiness.js` for read-only route evidence.
+An operator-trusted testnet lockbox, destination adapter, and dry-run relay command are
+implemented and locally tested. They require a funded operator and verified token mapping;
+they are not a trust-minimized bridge or a live route yet. The current prototype supports
+Sepolia → Portaldot only; see [`docs/BRIDGE_PROTOTYPE.md`](docs/BRIDGE_PROTOTYPE.md).
+An atomic fixed-denomination tPOT/ERC-20 note exchange is also implemented and locally
+tested. A pUSDT pool, real order-bound proof flow, and safe private submission are still
+needed before it can be offered to users. See [`docs/PRIVATE_SWAPS.md`](docs/PRIVATE_SWAPS.md).
 
 ## Quickstart
 
