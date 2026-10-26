@@ -14,6 +14,7 @@ export * from "./portaldot";
 export * from "./nativeClient";
 export * from "./nativeDeploy";
 export * from "./reviveProvider";
+export * from "./hybridProvider";
 export * from "./crossVm";
 export * from "./swap";
 export * from "./payments";

@@ -30,6 +30,11 @@ export interface PoolClientOptions {
    * and every transfer must be >= the asset's minBalance.
    */
   assetRules?: { sufficient: boolean; minBalance: bigint };
+  /**
+   * Provider for event scans when the runner's provider cannot see every event — e.g. an
+   * EVM wallet's RPC misses deposits made from native accounts (see HybridProvider).
+   */
+  logProvider?: ethers.Provider;
 }
 
 export class UmbraPoolClient {
@@ -39,6 +44,8 @@ export class UmbraPoolClient {
   private deployBlock: number;
   private chunkSize: number;
   private assetRules?: { sufficient: boolean; minBalance: bigint };
+  private logContract: ethers.Contract;
+  private logProvider?: ethers.Provider;
 
   constructor(address: string, runner: ethers.ContractRunner, opts: PoolClientOptions = {}) {
     this.address = address;
@@ -47,6 +54,8 @@ export class UmbraPoolClient {
     this.deployBlock = opts.deployBlock ?? 0;
     this.chunkSize = opts.chunkSize ?? 5_000;
     this.assetRules = opts.assetRules;
+    this.logProvider = opts.logProvider;
+    this.logContract = opts.logProvider ? new ethers.Contract(address, POOL_ABI, opts.logProvider) : this.contract;
   }
 
   private get provider(): ethers.Provider {
@@ -98,8 +107,8 @@ export class UmbraPoolClient {
    * eth_getLogs ranges, halving the chunk on errors.
    */
   async scanDeposits(fromBlock = this.deployBlock): Promise<PoolDeposit[]> {
-    const filter = this.contract.filters.Deposit();
-    const latest = await this.provider.getBlockNumber();
+    const filter = this.logContract.filters.Deposit();
+    const latest = await (this.logProvider ?? this.provider).getBlockNumber();
     const out: PoolDeposit[] = [];
     let start = fromBlock;
     let size = this.chunkSize;
@@ -107,7 +116,7 @@ export class UmbraPoolClient {
       const end = Math.min(start + size - 1, latest);
       let logs;
       try {
-        logs = await this.contract.queryFilter(filter, start, end);
+        logs = await this.logContract.queryFilter(filter, start, end);
       } catch (e) {
         if (size <= 1) throw e;
         size = Math.max(1, Math.floor(size / 2));
