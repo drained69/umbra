@@ -43,7 +43,12 @@ export async function connectEvm(): Promise<Wallet> {
     if (e.code === 4902) await eth.request({ method: "wallet_addEthereumChain", params: [PORTALDOT_PARAMS] });
     else throw e;
   }
-  const signer = await new ethers.BrowserProvider(eth).getSigner();
+  const provider = new ethers.BrowserProvider(eth);
+  const network = await provider.getNetwork();
+  if (network.chainId !== BigInt(DEPLOYMENT.chainId)) {
+    throw new Error(`Switch your EVM wallet to ${DEPLOYMENT.network} before connecting.`);
+  }
+  const signer = await provider.getSigner();
   return { kind: "evm", address: await signer.getAddress(), signer };
 }
 

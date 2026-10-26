@@ -112,10 +112,10 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
         <p className="hint">
           A zero-knowledge proof shows the pool you own <i>some</i> unspent note — never which one.
         </p>
-        <label>Note backup</label>
-        <textarea value={noteStr} onChange={(e) => setNoteStr(e.target.value)} placeholder="umbra-v3-…" />
-        <label>Recipient — a 0x address or a Portaldot 5… account</label>
-        <input value={recipientInput} onChange={(e) => setRecipientInput(e.target.value)} placeholder="0x… or 5…" />
+        <label htmlFor="withdraw-note">Note backup</label>
+        <textarea id="withdraw-note" value={noteStr} onChange={(e) => setNoteStr(e.target.value)} placeholder="umbra-v3-…" spellCheck={false} autoCapitalize="off" autoComplete="off" />
+        <label htmlFor="withdraw-recipient">Recipient — a 0x address or a Portaldot 5… account</label>
+        <input id="withdraw-recipient" value={recipientInput} onChange={(e) => setRecipientInput(e.target.value)} placeholder="0x… or 5…" spellCheck={false} autoCapitalize="off" autoComplete="off" />
         {asset.rules && !asset.rules.sufficient && (
           <p className="hint" style={{ marginTop: 6 }}>
             {asset.symbol} can only be received by accounts that already hold tPOT. For a brand-new address, withdraw a tPOT
@@ -124,9 +124,9 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
         )}
         {relayerUrl ? <label className="row" style={{ marginTop: 14 }}>
           <input type="checkbox" style={{ width: 18 }} checked={useRelayer} onChange={(e) => setUseRelayer(e.target.checked)} />
-          <span style={{ color: "var(--ink)" }}>Gasless via relayer (recommended — keeps the recipient unlinked)</span>
+          <span style={{ color: "var(--ink)" }}>Use relayer (keeps your wallet off the withdrawal transaction)</span>
         </label> : <p className="hint withdrawal-route">Withdrawals are signed by your connected wallet. A gasless relayer is not connected to this app yet.</p>}
-        <button className="primary" style={{ marginTop: 16 }} onClick={run} disabled={step >= 0 && step < 4}>
+        <button className="primary" style={{ marginTop: 16 }} onClick={run} disabled={!noteStr.trim() || !recipientInput.trim() || (step >= 0 && step < 4)}>
           Withdraw
         </button>
         <ol className="steps">
@@ -137,7 +137,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
           ))}
         </ol>
         {status && (
-          <div className={`status ${status.t}`}>
+          <div className={`status ${status.t}`} role={status.t === "err" ? "alert" : "status"}>
             {status.m}{" "}
             {status.href && (
               <a href={status.href} target="_blank" rel="noreferrer">
@@ -150,21 +150,20 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
 
       <div className="card">
         <h2>What leaks?</h2>
-        <p className="hint">Only a nullifier — unlinkable to any deposit.</p>
+        <p className="hint">The nullifier, recipient, fixed pool size, and transaction sender are public. A small pool or timing can reduce privacy.</p>
         {proof && note ? (
           <PrivacyVisualizer
             title="Withdrawal"
             publicRows={[
               { k: "nullifierHash", v: "0x" + nullifierHash(note).toString(16).slice(0, 22) + "…" },
               { k: "recipient", v: resolved },
-              { k: "link to deposit", v: "NONE — the proof hides which leaf" },
+              { k: "pool amount", v: `fixed ${asset.symbol} denomination` },
+              { k: "link to deposit", v: "not disclosed by the proof; metadata can still narrow candidates" },
+              { k: "verification", v: DEPLOYMENT.verifierMode === "coprocessor" ? "Groth16 proof checked by the WASM coprocessor" : "Groth16 proof checked on-chain" },
             ]}
             privateRows={[
               { k: "which note", v: "hidden by ZK Merkle membership" },
-              {
-                k: "proof",
-                v: DEPLOYMENT.verifierMode === "coprocessor" ? "Groth16 — verified in the WASM coprocessor" : "Groth16 — verified on-chain (BN254 precompiles)",
-              },
+              { k: "note secret", v: "stays in your local backup" },
             ]}
           />
         ) : (

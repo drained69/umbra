@@ -3,8 +3,6 @@
 // handles both. The heavy pairing VERIFY happens on-chain or in the WASM coprocessor;
 // this is only the (client-side) PROVE step.
 
-// @ts-ignore - snarkjs ships no types
-import * as snarkjs from "snarkjs";
 import { Note, nullifierHash } from "./note";
 import type { MerklePath } from "./merkle";
 
@@ -54,7 +52,10 @@ export async function generateWithdrawProof(
     pathIndices: inputs.path.pathIndices.map((x) => x.toString()),
   };
 
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+  // Load the large prover only when a user actually creates a proof.
+  // @ts-ignore - snarkjs ships no types
+  const { groth16 } = await import("snarkjs");
+  const { proof, publicSignals } = await groth16.fullProve(
     circuitInput,
     artifacts.wasm,
     artifacts.zkey
@@ -90,5 +91,7 @@ export async function verifyWithdrawProof(
     protocol: "groth16",
     curve: "bn128",
   };
-  return snarkjs.groth16.verify(vkey, proof.publicSignals, snarkProof);
+  // @ts-ignore - snarkjs ships no types
+  const { groth16 } = await import("snarkjs");
+  return groth16.verify(vkey, proof.publicSignals, snarkProof);
 }

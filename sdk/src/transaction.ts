@@ -2,8 +2,6 @@
 // proof for UmbraShieldedPool.transact. Handles deposit / withdraw / internal transfer
 // uniformly via the signed `extAmount`.
 
-// @ts-ignore - snarkjs ships no types
-import * as snarkjs from "snarkjs";
 import { ethers } from "ethers";
 import { bytesToHex } from "@noble/hashes/utils";
 import { Utxo } from "./utxo";
@@ -128,7 +126,10 @@ export async function buildTransaction(
     outBlinding,
   };
 
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, artifacts.wasm, artifacts.zkey);
+  // Keep proof-generation code out of the initial app bundle.
+  // @ts-ignore - snarkjs ships no types
+  const { groth16 } = await import("snarkjs");
+  const { proof, publicSignals } = await groth16.fullProve(input, artifacts.wasm, artifacts.zkey);
 
   return {
     a: [proof.pi_a[0], proof.pi_a[1]],

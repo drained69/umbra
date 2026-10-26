@@ -22,17 +22,19 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
   const [note, setNote] = useState<Note | null>(null);
   const [status, setStatus] = useState<{ t: "ok" | "err" | "info"; m: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [refs, setRefs] = useState<TxRef[]>([]);
   const isToken = asset.assetId !== null || asset.symbol !== "tPOT";
 
   function gen() {
     setNote(createNote(denomWei));
+    setBackupConfirmed(false);
     setRefs([]);
     setStatus({ t: "info", m: "Note generated locally. Back it up — it is the ONLY way to withdraw." });
   }
 
   async function run() {
-    if (!note) return;
+    if (!note || !backupConfirmed) return;
     setBusy(true);
     setStatus({
       t: "info",
@@ -53,7 +55,7 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
           })
         : new Uint8Array();
       setRefs(await deposit(note, memo));
-      setStatus({ t: "ok", m: `Shielded ${denomLabel} ${asset.symbol}. It's now indistinguishable from every other deposit in this pool.` });
+      setStatus({ t: "ok", m: `Deposited ${denomLabel} ${asset.symbol}. Keep your note backup safe; withdrawal privacy depends on activity in this pool.` });
     } catch (e: any) {
       setStatus({ t: "err", m: e?.message || String(e) });
     } finally {
@@ -75,16 +77,17 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
         <button onClick={gen}>① Generate note</button>
         {note && (
           <>
-            <div className="note-box">{serializeNote(note)}</div>
+            <div className="note-box" aria-label="Your private note backup">{serializeNote(note)}</div>
             <button className="ghost" style={{ marginTop: 8 }} onClick={() => navigator.clipboard.writeText(serializeNote(note))}>
               Copy backup
             </button>
-            <button className="primary" style={{ marginTop: 8, marginLeft: 8 }} onClick={run} disabled={busy}>
+            <label className="backup-check"><input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} /> I saved my note backup somewhere private</label>
+            <button className="primary" style={{ marginTop: 8 }} onClick={run} disabled={busy || !backupConfirmed || refs.length > 0}>
               {busy ? "Depositing…" : `② Deposit ${denomLabel} ${asset.symbol}`}
             </button>
           </>
         )}
-        {status && <div className={`status ${status.t}`}>{status.m}</div>}
+        {status && <div className={`status ${status.t}`} role={status.t === "err" ? "alert" : "status"}>{status.m}</div>}
         {refs.length > 0 && (
           <div className="status ok">
             {refs.map((r, i) => (
@@ -104,18 +107,18 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
 
       <div className="card">
         <h2>What leaks?</h2>
-        <p className="hint">Nothing that links the deposit to a future withdrawal.</p>
+        <p className="hint">The pool hides which note is later spent. Timing and a small anonymity set can still reduce privacy.</p>
         {note ? (
           <PrivacyVisualizer
             title="Deposit"
             publicRows={[
               { k: "commitment", v: "0x" + commitment(note).toString(16).slice(0, 24) + "…" },
-              { k: "amount", v: `${denomLabel} ${asset.symbol} (pool-fixed — reveals nothing)` },
-              { k: "depositor", v: "visible, but unlinkable to the withdrawal" },
+              { k: "amount", v: `${denomLabel} ${asset.symbol} (public pool size)` },
+              { k: "depositor", v: "public wallet address" },
             ]}
             privateRows={[
-              { k: "nullifier", v: note.nullifier.toString(16).slice(0, 20) + "…" },
-              { k: "secret", v: note.secret.toString(16).slice(0, 20) + "…" },
+              { k: "nullifier", v: "stored only in your note backup" },
+              { k: "secret", v: "stored only in your note backup" },
               { k: "nullifierHash", v: nullifierHash(note).toString(16).slice(0, 20) + "… (revealed only at withdrawal)" },
             ]}
           />

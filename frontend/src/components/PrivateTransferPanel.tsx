@@ -129,18 +129,18 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
       <p className="hint">A separate shielded address receives encrypted notes. Save its spend key to recover your balance in another browser.</p>
       {!owner ? <>
         <button className="primary" onClick={createAccount}>Create private account</button>
-        <label style={{ display: "block", marginTop: 16 }}>Or restore a spend key</label>
-        <textarea value={backup} onChange={(e) => setBackup(e.target.value)} placeholder="umbra-sk-…" />
+        <label htmlFor="restore-spend-key" style={{ display: "block", marginTop: 16 }}>Or restore a spend key</label>
+        <textarea id="restore-spend-key" value={backup} onChange={(e) => setBackup(e.target.value)} placeholder="umbra-sk-…" spellCheck={false} autoCapitalize="off" autoComplete="off" />
         <button className="ghost" onClick={restoreAccount}>Restore account</button>
       </> : <>
         <p><strong>Private balance:</strong> {balance === null ? "Scanning…" : `${format(balance, 18)} ${NATIVE}`}</p>
         <p className="hint">{notes.length} unspent note{notes.length === 1 ? "" : "s"}</p>
-        <label>Shareable shielded address</label>
-        <textarea readOnly value={owner.address()} />
+        <label htmlFor="shielded-address">Shareable shielded address</label>
+        <textarea id="shielded-address" readOnly value={owner.address()} />
         <button className="ghost" onClick={() => navigator.clipboard.writeText(owner.address())}>Copy address</button>
         {!backupConfirmed && <>
-          <label style={{ display: "block", marginTop: 16 }}>Spend key — save it securely</label>
-          <textarea readOnly value={owner.serialize()} />
+          <label htmlFor="new-spend-key" style={{ display: "block", marginTop: 16 }}>Spend key — save it securely</label>
+          <textarea id="new-spend-key" readOnly value={owner.serialize()} />
           <button className="ghost" onClick={() => navigator.clipboard.writeText(owner.serialize())}>Copy spend key</button>
           <label className="row" style={{ marginTop: 12 }}><input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />I saved my spend key</label>
         </>}
@@ -149,14 +149,14 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
     </div>
     <div className="card">
       <h2>Move private {NATIVE}</h2>
-      <p className="hint">Deposit any amount, send to another shielded address, or withdraw to a 0x wallet.</p>
-      <div className="denoms">{(["deposit", "send", "withdraw"] as Action[]).map((item) => <button key={item} className={`chip ${action === item ? "active" : ""}`} onClick={() => { setAction(item); setStatus(null); }}>{item === "send" ? "Send privately" : item === "deposit" ? "Deposit" : "Withdraw"}</button>)}</div>
-      <label style={{ display: "block", marginTop: 16 }}>Amount in {NATIVE}</label>
-      <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1.0" />
-      {action !== "deposit" && <><label>{action === "send" ? "Recipient’s shielded address" : "Recipient’s 0x address"}</label><textarea value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={action === "send" ? "umbra-addr-…" : "0x…"} /></>}
+      <p className="hint">Deposit any amount, send to another shielded address, or withdraw to a 0x wallet. Deposits and withdrawals are public at the pool boundary.</p>
+      <div className="denoms">{(["deposit", "send", "withdraw"] as Action[]).map((item) => <button key={item} className={`chip ${action === item ? "active" : ""}`} aria-pressed={action === item} onClick={() => { setAction(item); setStatus(null); }}>{item === "send" ? "Send privately" : item === "deposit" ? "Deposit" : "Withdraw"}</button>)}</div>
+      <label htmlFor="private-amount" style={{ display: "block", marginTop: 16 }}>Amount in {NATIVE}</label>
+      <input id="private-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1.0" />
+      {action !== "deposit" && <><label htmlFor="private-recipient">{action === "send" ? "Recipient’s shielded address" : "Recipient’s 0x address"}</label><textarea id="private-recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={action === "send" ? "umbra-addr-…" : "0x…"} spellCheck={false} autoCapitalize="off" /></>}
       {action === "send" && <p className="hint">The recipient and amount are encrypted in the pool. Your gas-paying wallet remains visible on-chain.</p>}
-      <button className="primary" onClick={submit} disabled={!owner || !backupConfirmed || busy}>{busy ? "Working…" : action === "send" ? "Send privately" : action === "deposit" ? "Deposit privately" : "Withdraw"}</button>
-      {status && <div className={`status ${status.kind}`}>{status.message} {status.href && <a href={status.href} target="_blank" rel="noreferrer">View block ↗</a>}</div>}
+      <button className="primary" onClick={submit} disabled={!owner || !backupConfirmed || !amount.trim() || (action !== "deposit" && !recipient.trim()) || busy}>{busy ? "Working…" : action === "send" ? "Send privately" : action === "deposit" ? "Deposit to private account" : "Withdraw"}</button>
+      {status && <div className={`status ${status.kind}`} role={status.kind === "err" ? "alert" : "status"}>{status.message} {status.href && <a href={status.href} target="_blank" rel="noreferrer">View block ↗</a>}</div>}
     </div>
   </div>;
 }

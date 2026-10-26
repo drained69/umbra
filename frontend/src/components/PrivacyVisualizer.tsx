@@ -18,7 +18,7 @@ export default function PrivacyVisualizer({ title, publicRows, privateRows }: Pr
           ))}
         </div>
         <div className="col private">
-          <h3>🔒 Your secret (never on-chain)</h3>
+          <h3>🔒 Not shown in this transaction</h3>
           {privateRows.map((r, i) => (
             <div className="kv" key={i}>
               <b>{r.k}:</b> {r.v}

@@ -62,8 +62,8 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel, decimal
     <div className="card">
       <h2>Viewing key &amp; selective disclosure</h2>
       <p className="hint">
-        Compliance without surveillance. Reveal your {denomLabel} {symbol} pool history to yourself, or to an
-        auditor you choose. The key is <b>read-only</b> — it cannot withdraw anything.
+        Review memo history for the {denomLabel} {symbol} pool, or share read-only access with someone you choose.
+        This key cannot spend funds, but anyone holding it can inspect memos encrypted for it.
       </p>
 
       <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -79,9 +79,9 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel, decimal
         </button>
       </div>
 
-      <label>Or audit someone who shared their key</label>
+      <label htmlFor="shared-viewing-key">Or audit someone who shared their key</label>
       <div className="row">
-        <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="umbra-vk-…" />
+        <input id="shared-viewing-key" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="umbra-vk-…" spellCheck={false} autoCapitalize="off" autoComplete="off" />
         <button
           onClick={() => {
             try {
@@ -95,7 +95,7 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel, decimal
         </button>
       </div>
 
-      {status && <div className={`status ${status.t}`}>{status.m}</div>}
+      {status && <div className={`status ${status.t}`} role={status.t === "err" ? "alert" : "status"}>{status.m}</div>}
 
       {rows.length > 0 && (
         <table className="disc">
