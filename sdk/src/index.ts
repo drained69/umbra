@@ -14,3 +14,4 @@ export * from "./portaldot";
 export * from "./nativeClient";
 export * from "./nativeDeploy";
 export * from "./reviveProvider";
+export * from "./crossVm";

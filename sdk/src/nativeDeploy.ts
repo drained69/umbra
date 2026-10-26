@@ -8,7 +8,7 @@ import { ethers } from "ethers";
 import { assetErc20Address, evmAddressOf, sendNative, type SendResult } from "./portaldot";
 
 export type Bytecodes = Record<
-  "Poseidon2" | "WithdrawVerifier" | "TransactionVerifier" | "UmbraPool" | "UmbraTokenPool" | "UmbraShieldedPool" | "DeployHarness",
+  "Poseidon2" | "WithdrawVerifier" | "TransactionVerifier" | "UmbraPool" | "UmbraTokenPool" | "UmbraShieldedPool" | "UmbraCoprocessorBridge" | "DeployHarness",
   string
 >;
 

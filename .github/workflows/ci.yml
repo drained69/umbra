@@ -120,6 +120,8 @@ jobs:
       - name: Preflight (runtime facts, precompiles, asset precompiles)
         run: cd scripts && NETWORK=testnet node preflight.js
       - name: Native-account integration (dry-runs)
-        run: cd sdk && npx --yes tsx@4.19.1 test/portaldot_live.ts
+        run: |
+          cd sdk && npx --yes tsx@4.19.1 test/portaldot_live.ts
+          npx --yes tsx@4.19.1 test/crossvm_live.ts
       - name: Per-operation costs
         run: cd scripts && NETWORK=testnet node measure-costs.js
