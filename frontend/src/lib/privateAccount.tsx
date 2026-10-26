@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { FIELD_SIZE, Keypair, UmbraShieldedClient, parseMemo, toUnits, type Utxo } from "@umbra/sdk";
+import { FIELD_SIZE, Keypair, UmbraMultiAssetClient, UmbraShieldedClient, parseMemo, toUnits, type Utxo } from "@umbra/sdk";
 import { DEPLOYMENT, SCAN_CHUNK, readProvider } from "./chain";
 import { findMyRequest, markRequestPaid } from "./finance";
 import { readStored, storeKey, writeStored } from "./store";
 import { SHIELDED_POOL } from "./shielded";
+import { MA_NATIVE, maClient } from "./multi";
 import { isSealed, passcodeProblem, seal, unseal, type SealedSecret } from "./vault";
 
 /**
@@ -35,8 +36,16 @@ interface PrivateAccount {
   locked: boolean;
   /** saved by an earlier version without a passcode */
   needsPasscode: boolean;
+  /** tPOT across both pools */
   balance: bigint | null;
+  /** largest tPOT amount one transaction can spend (one pool, two notes) */
   spendable: bigint;
+  /** multi-asset pool: asset id -> balance (empty until that pool is deployed) */
+  maBalances: Map<bigint, bigint>;
+  /** largest amount of `asset` one multi-asset transaction can spend */
+  maSpendable(asset: bigint): bigint;
+  /** which pool can pay `need` tPOT in one transaction (the multi-asset pool is preferred) */
+  tpotSource(need: bigint): "multi" | "legacy" | null;
   notes: Utxo[]; // unspent
   history: ReceivedNote[]; // every note received, newest first
   scanning: boolean;
@@ -78,6 +87,7 @@ export function PrivateAccountProvider({ children }: { children: ReactNode }) {
   const [notes, setNotes] = useState<Utxo[]>([]);
   const [history, setHistory] = useState<ReceivedNote[]>([]);
   const [balance, setBalance] = useState<bigint | null>(null);
+  const [maNotes, setMaNotes] = useState<{ utxo: Utxo; spent: boolean }[]>([]);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,11 +101,15 @@ export function PrivateAccountProvider({ children }: { children: ReactNode }) {
     setScanning(true);
     setError(null);
     try {
-      const all = await client.myNotes(owner);
+      const [all, ma] = await Promise.all([client.myNotes(owner), maClient ? maClient.myNotes(owner) : Promise.resolve([])]);
       const unspent = all.filter((n) => !n.spent).map((n) => n.utxo);
       setNotes(unspent);
-      setBalance(unspent.reduce((s, u) => s + u.amount, 0n));
-      const hist = all.map((n) => ({ ...n, ...parseMemo(n.utxo.memo) })).reverse();
+      setMaNotes(ma);
+      const maTpot = UmbraMultiAssetClient.balances(ma).get(MA_NATIVE) ?? 0n;
+      setBalance(unspent.reduce((s, u) => s + u.amount, 0n) + maTpot);
+      // tPOT notes from both pools (newest pool first); other assets show in maBalances
+      const received = [...all, ...ma.filter((n) => n.utxo.asset === MA_NATIVE)];
+      const hist = received.map((n) => ({ ...n, ...parseMemo(n.utxo.memo) })).reverse();
       setHistory(hist);
       // A private payment carries its request id in the encrypted memo: settle matching requests.
       for (const h of hist) {
@@ -112,6 +126,7 @@ export function PrivateAccountProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setNotes([]);
+    setMaNotes([]);
     setHistory([]);
     setBalance(null);
     refresh();
@@ -138,7 +153,17 @@ export function PrivateAccountProvider({ children }: { children: ReactNode }) {
     locked: !owner && !!saved && isSealed(saved),
     needsPasscode: !!owner && legacy,
     balance,
-    spendable: UmbraShieldedClient.spendable(notes),
+    spendable: (() => {
+      const a = UmbraShieldedClient.spendable(notes), b = UmbraMultiAssetClient.spendable(maNotes, MA_NATIVE);
+      return a > b ? a : b;
+    })(),
+    maBalances: UmbraMultiAssetClient.balances(maNotes),
+    maSpendable: (asset) => UmbraMultiAssetClient.spendable(maNotes, asset),
+    tpotSource(need) {
+      if (maClient && UmbraMultiAssetClient.spendable(maNotes, MA_NATIVE) >= need) return "multi";
+      if (UmbraShieldedClient.spendable(notes) >= need) return "legacy";
+      return null;
+    },
     notes,
     history,
     scanning,

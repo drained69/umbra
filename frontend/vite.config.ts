@@ -22,4 +22,6 @@ export default defineConfig({
     exclude: ["snarkjs"],
   },
   server: { port: 5173 },
+  // deploy.html: operator page for the multi-asset pool (not linked from the app)
+  build: { rollupOptions: { input: { main: resolve(__dirname, "index.html"), deploy: resolve(__dirname, "deploy.html") } } },
 });

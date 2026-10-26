@@ -6,6 +6,8 @@ import { usePrivateAccount } from "../lib/privateAccount";
 import { proveShielded, shieldedCall } from "../lib/shielded";
 import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
+import PrivateSwap from "./PrivateSwap";
+import { MA } from "../lib/multi";
 
 type Status = { t: "ok" | "err" | "info"; m: string; href?: string } | null;
 const SLIPPAGES = [50, 100, 200];
@@ -17,6 +19,16 @@ const WEI_PER_PLANCK = 10n ** 4n; // EVM amounts are planck × 10^4
  * as ONE atomic extrinsic: if the price moves past the slippage limit, nothing happens.
  */
 export default function SwapPanel({ wallet }: { wallet: Wallet }) {
+  const [mode, setMode] = useState<"private" | "wallet">(MA ? "private" : "wallet");
+  const modes = MA && <div className="denoms sub-tabs" role="group" aria-label="Swap type">
+    <button className={`chip ${mode === "private" ? "active" : ""}`} aria-pressed={mode === "private"} onClick={() => setMode("private")}>Private swap</button>
+    <button className={`chip ${mode === "wallet" ? "active" : ""}`} aria-pressed={mode === "wallet"} onClick={() => setMode("wallet")}>From my wallet</button>
+  </div>;
+  if (MA && mode === "private") return <>{modes}<PrivateSwap /></>;
+  return <>{modes}<WalletSwap wallet={wallet} /></>;
+}
+
+function WalletSwap({ wallet }: { wallet: Wallet }) {
   if (wallet.kind !== "native" || !PUSD) {
     return <div className="notice-card"><span>ⓘ</span><div><strong>{PUSD ? "Connect the Portaldot Extension to swap" : "No pUSD on this network"}</strong><p>{PUSD ? "Swaps use Portaldot's built-in DEX, which is called from a native Portaldot account." : "There is no pUSD asset to swap with here."}</p></div></div>;
   }
@@ -41,7 +53,7 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
   const sellSym = sell === "native" ? NATIVE : "pUSD";
   const buySym = sell === "native" ? "pUSD" : NATIVE;
   const dec = (a: "native" | number) => (a === "native" ? NATIVE_PLANCK_DECIMALS : pusd.decimals);
-  const privateRoute = route === "private" && !!pa.owner;
+  const privateRoute = route === "private" && !!pa.owner && !MA;
 
   useEffect(() => {
     let stop = false;
@@ -134,7 +146,7 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
           <div className="row"><strong className="swap-out">{quote ? fmt(quote.amountOut, dec(quote.to), 6) : "—"}</strong><span className="asset-badge">{buySym}</span></div>
         </div>
 
-        {pa.owner && <>
+        {pa.owner && !MA && <>
           <span className="toolbar-label" style={{ marginTop: 14 }}>{sell === "native" ? "PAY WITH" : "RECEIVE INTO"}</span>
           <div className="denoms">
             <button className={`chip ${!privateRoute ? "active" : ""}`} onClick={() => setRoute("wallet")}>Wallet</button>

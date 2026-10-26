@@ -95,7 +95,7 @@ function SendForm({ wallet }: { wallet: Wallet }) {
     try {
       const info = (m: string) => setStatus({ t: "info", m });
       if (isPrivate) {
-        const ref = await payPrivately(effectiveSource === "private" ? route.signer : wallet, pa.client, { source: effectiveSource!, owner: pa.owner, to: to.trim(), amount, memo: memo.trim() || undefined }, info);
+        const ref = await payPrivately(effectiveSource === "private" ? route.signer : wallet, pa.client, { source: effectiveSource!, owner: pa.owner, to: to.trim(), amount, memo: memo.trim() || undefined, pool: pa.tpotSource(units + route.fee) ?? undefined }, info);
         logActivity({ kind: "send", title: `Sent ${amount} ${NATIVE} privately${toName ? ` to ${toName}` : ""}`, detail: memo || undefined, href: ref.href, private: true });
         setStatus({ t: "ok", m: `Sent privately · ${ref.label}`, href: ref.href });
         pa.refresh();
@@ -465,7 +465,7 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
         ref = await payPublicly(wallet!, { asset: req.asset, to: req.to.account!, amount: req.amount, requestId: req.id }, info);
         if (ref.blockHash) setReceipt(`${appUrl()}?receipt=${encodeReceipt({ v: 1, id: req.id, chainId: req.chainId, blockHash: ref.blockHash })}`);
       } else {
-        ref = await payPrivately(kind === "private" ? route.signer : wallet, pa.client, { source: kind, owner: pa.owner, to: req.to.shielded!, amount: req.amount, memo: requestMemo(req.id, req.memo ?? "") }, info);
+        ref = await payPrivately(kind === "private" ? route.signer : wallet, pa.client, { source: kind, owner: pa.owner, to: req.to.shielded!, amount: req.amount, memo: requestMemo(req.id, req.memo ?? ""), pool: pa.tpotSource(units + route.fee) ?? undefined }, info);
         pa.refresh();
       }
       logActivity({ kind: "pay", title: `Paid ${req.amount} ${req.asset.symbol} to ${req.name ?? "a request"}`, detail: req.memo, href: ref.href, private: kind !== "public" });

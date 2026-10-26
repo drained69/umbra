@@ -9,11 +9,12 @@ import {
   toUnits,
   type RequestAsset,
   type UmbraShieldedClient,
-  type Keypair,
+  Keypair,
 } from "@umbra/sdk";
 import { blockLink, getApi, short } from "./chain";
 import { NATIVE_PLANCK_DECIMALS } from "./finance";
 import { spendPrivately, submitShielded, type TxRef } from "./shielded";
+import { MA_NATIVE, maClient, proveMulti, spendMulti, submitMultiWithWallet } from "./multi";
 import type { Wallet } from "./wallet";
 
 /**
@@ -25,14 +26,24 @@ import type { Wallet } from "./wallet";
 export async function payPrivately(
   signer: Wallet | null,
   client: UmbraShieldedClient,
-  p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: string; memo?: string },
+  p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: string; memo?: string; pool?: "multi" | "legacy" },
   onStatus: (m: string) => void
 ): Promise<TxRef> {
   const base = { owner: p.owner, to: p.to, amount: toUnits(p.amount, 18), memo: p.memo };
   if (p.source === "private") {
+    if (p.pool === "multi") {
+      const owner = p.owner!;
+      return spendMulti(MA_NATIVE, (relay) => maClient!.planPayment({ owner, to: p.to, asset: MA_NATIVE, amount: base.amount, memo: p.memo, relay }), onStatus, { selfSubmit: signer });
+    }
     return spendPrivately(client, (relay) => client.planPayment({ ...base, source: "private", relay }), onStatus, { selfSubmit: signer });
   }
   if (!signer) throw new Error("Connect a wallet to pay from it.");
+  if (maClient) {
+    // new deposits go to the multi-asset pool once it exists
+    onStatus("Generating a zero-knowledge proof in your browser…");
+    const prepared = await proveMulti(maClient.planDeposit(p.owner ?? new Keypair(), MA_NATIVE, base.amount, p.to, p.memo));
+    return submitMultiWithWallet(signer, prepared, onStatus);
+  }
   return submitShielded(signer, client, await client.planPayment({ ...base, source: "wallet" }), onStatus);
 }
 

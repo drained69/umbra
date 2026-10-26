@@ -22,6 +22,8 @@ function selectDeployment(): any {
 }
 
 export const DEPLOYMENT = selectDeployment();
+/** The relayer that submits private-balance transactions, so the user's wallet never signs them. */
+export const RELAYER_URL: string = (import.meta as any).env?.VITE_RELAYER_URL || "";
 export const NATIVE = DEPLOYMENT.nativeSymbol as string;
 /** Networks without an EVM JSON-RPC (V3 Live) are read through Portaldot's native APIs. */
 export const HAS_EVM_RPC = !!DEPLOYMENT.rpc;

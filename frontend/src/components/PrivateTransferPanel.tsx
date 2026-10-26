@@ -5,6 +5,8 @@ import { NATIVE } from "../lib/chain";
 import { logActivity, validShielded } from "../lib/finance";
 import { usePrivateAccount } from "../lib/privateAccount";
 import { spendPrivately, submitShielded } from "../lib/shielded";
+import { MA, MA_NATIVE, maClient, proveMulti, spendMulti, submitMultiWithWallet, useMaRelayer } from "../lib/multi";
+import { fmt } from "../lib/finance";
 import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
 import CopyButton from "./CopyButton";
@@ -22,6 +24,11 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
   const [busy, setBusy] = useState(false);
   const [selfSubmit, setSelfSubmit] = useState(false);
   const route = useSpendRoute(wallet, selfSubmit);
+  // with the multi-asset pool, the private balance also holds tokens (pUSD)
+  const [assetId, setAssetId] = useState(0);
+  const asset = MA ? MA.assets.find((a) => a.id === assetId)! : { id: 0, symbol: NATIVE, decimals: 18, address: null };
+  const maRelayer = useMaRelayer();
+  const tokenFee = asset.id !== 0 && maRelayer.state === "ready" ? maRelayer.quote.fees[asset.id] : null;
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; message: string; href?: string } | null>(null);
 
   async function submit() {
@@ -29,24 +36,37 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
     setBusy(true);
     setStatus(null);
     try {
-      const value = toUnits(amount, 18);
+      const value = toUnits(amount, asset.decimals);
       if (value <= 0n) throw new Error("Enter an amount greater than zero.");
       const owner = pa.owner;
       const info = (m: string) => setStatus({ kind: "info", message: m });
+      const id = BigInt(asset.id);
+      // tPOT can sit in either pool; tokens only in the multi-asset pool
+      const pool = id !== MA_NATIVE ? "multi" : pa.tpotSource(value + route.fee) ?? (maClient ? "multi" : "legacy");
       let ref;
       if (action === "deposit") {
-        ref = await submitShielded(wallet, pa.client, { inputs: [], outputs: [new Utxo({ amount: value, keypair: owner })], owner, extAmount: value }, info);
+        if (maClient) {
+          info("Generating a zero-knowledge proof in your browser…");
+          ref = await submitMultiWithWallet(wallet, await proveMulti(maClient.planDeposit(owner, id, value)), info);
+        } else {
+          ref = await submitShielded(wallet, pa.client, { inputs: [], outputs: [new Utxo({ amount: value, keypair: owner })], owner, extAmount: value }, info);
+        }
       } else if (action === "send") {
         if (!validShielded(recipient)) throw new Error("Enter the recipient's umbra-addr- address.");
         Keypair.publicFromAddress(recipient.trim());
-        ref = await spendPrivately(pa.client, (relay) => pa.client.planPayment({ source: "private", owner, to: recipient.trim(), amount: value, memo: memo.trim() || undefined, relay }), info, { selfSubmit: route.signer });
+        const to = recipient.trim(), note = memo.trim() || undefined;
+        ref = pool === "multi"
+          ? await spendMulti(id, (relay) => maClient!.planPayment({ owner, to, asset: id, amount: value, memo: note, relay }), info, { selfSubmit: route.signer })
+          : await spendPrivately(pa.client, (relay) => pa.client.planPayment({ source: "private", owner, to, amount: value, memo: note, relay }), info, { selfSubmit: route.signer });
       } else {
         if (!ethers.isAddress(recipient.trim())) throw new Error("Enter a valid 0x withdrawal address.");
         const to = ethers.getAddress(recipient.trim());
-        ref = await spendPrivately(pa.client, (relay) => pa.client.planWithdrawal(owner, value, to, relay), info, { selfSubmit: route.signer });
+        ref = pool === "multi"
+          ? await spendMulti(id, (relay) => maClient!.planWithdrawal(owner, id, value, to, relay), info, { selfSubmit: route.signer })
+          : await spendPrivately(pa.client, (relay) => pa.client.planWithdrawal(owner, value, to, relay), info, { selfSubmit: route.signer });
       }
       await pa.refresh();
-      logActivity({ kind: action === "deposit" ? "shield" : action === "send" ? "send" : "withdraw", title: `${action === "deposit" ? "Deposited" : action === "send" ? "Sent" : "Withdrew"} ${amount} ${NATIVE}${action === "send" ? " privately" : ""}`, detail: memo || undefined, href: ref.href, private: action === "send" });
+      logActivity({ kind: action === "deposit" ? "shield" : action === "send" ? "send" : "withdraw", title: `${action === "deposit" ? "Deposited" : action === "send" ? "Sent" : "Withdrew"} ${amount} ${asset.symbol}${action === "send" ? " privately" : ""}`, detail: memo || undefined, href: ref.href, private: action === "send" });
       setAmount("");
       setMemo("");
       setStatus({ kind: "ok", message: `${action === "deposit" ? "Deposited" : action === "send" ? "Sent privately" : "Withdrawn"} · ${ref.label}`, href: ref.href });
@@ -67,16 +87,18 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
       </div>}
     </div>
     <div className="card">
-      <h2>Move private {NATIVE}</h2>
+      <h2>Move private {MA ? "funds" : NATIVE}</h2>
       <p className="hint">Deposit any amount, send to another private address, or withdraw to a 0x wallet. Your wallet signs only deposits; the relayer submits sends and withdrawals, so they don't point back to you.</p>
       <PrivatePoolMeter refreshKey={pa.history.length} />
       <div className="denoms">{(["deposit", "send", "withdraw"] as Action[]).map((item) => <button key={item} className={`chip ${action === item ? "active" : ""}`} aria-pressed={action === item} onClick={() => { setAction(item); setStatus(null); }}>{item === "send" ? "Send privately" : item === "deposit" ? "Deposit" : "Withdraw"}</button>)}</div>
-      <label htmlFor="private-amount" style={{ display: "block", marginTop: 16 }}>Amount in {NATIVE}</label>
+      {MA && <div className="denoms" role="group" aria-label="Asset" style={{ marginTop: 12 }}>{MA.assets.map((a) => <button key={a.id} className={`chip ${assetId === a.id ? "active" : ""}`} aria-pressed={assetId === a.id} onClick={() => { setAssetId(a.id); setAmount(""); }}>{a.symbol}{pa.owner ? ` · ${fmt(pa.maBalances.get(BigInt(a.id)) ?? 0n, a.decimals, 4)}` : ""}</button>)}</div>}
+      <label htmlFor="private-amount" style={{ display: "block", marginTop: 16 }}>Amount in {asset.symbol}</label>
       <input id="private-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1.0" />
       {action !== "deposit" && <><label htmlFor="private-recipient">{action === "send" ? "Recipient’s private address" : "Recipient’s 0x address"}</label><textarea id="private-recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={action === "send" ? "umbra-addr-…" : "0x…"} spellCheck={false} autoCapitalize="off" /></>}
       {action === "send" && <><label htmlFor="private-memo">Note (encrypted to the recipient)</label><input id="private-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Rent for May" maxLength={60} /><p className="hint">The recipient, amount and note are encrypted in the pool.</p></>}
       {action === "withdraw" && <p className="hint">The amount and the 0x address are public when they leave the pool. Withdraw to a fresh address that has never been linked to you.</p>}
-      {action !== "deposit" && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} />}
+      {action !== "deposit" && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} fee={tokenFee === null ? undefined : `${fmt(tokenFee, asset.decimals, 2)} ${asset.symbol}`} />}
+      {action === "withdraw" && asset.id !== 0 && <p className="hint">The receiving account needs a little {NATIVE} first: Portaldot accounts can't hold {asset.symbol} without it.</p>}
       {pa.owner && !pa.backedUp && <p className="hint">Confirm you saved the spend key before moving funds.</p>}
       <button className="primary" onClick={submit} disabled={!pa.owner || !pa.backedUp || !amount.trim() || (action !== "deposit" && (!recipient.trim() || !route.ready)) || busy}>{busy ? "Working…" : action === "send" ? "Send privately" : action === "deposit" ? "Deposit to private account" : "Withdraw"}</button>
       {status && <div className={`status ${status.kind}`} role={status.kind === "err" ? "alert" : "status"}>{status.message} {status.href && <a href={status.href} target="_blank" rel="noreferrer">View block ↗</a>}</div>}

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { getRelayerQuote, type RelayerQuote } from "@umbra/sdk";
-import { DEPLOYMENT } from "./chain";
+import { DEPLOYMENT, RELAYER_URL } from "./chain";
+import { MA, maRelayerQuote } from "./multi";
 
-/** The relayer that submits private-balance transactions, so the user's wallet never signs them. */
-export const RELAYER_URL: string = (import.meta as any).env?.VITE_RELAYER_URL || "";
+export { RELAYER_URL };
 
 let cached: Promise<RelayerQuote> | null = null;
 
@@ -16,13 +16,15 @@ export function relayerQuote(): Promise<RelayerQuote> {
   return cached;
 }
 
-export type RelayerState = { state: "loading" } | { state: "ready"; quote: RelayerQuote } | { state: "down"; error: string };
+export type RelayerState = { state: "loading" } | { state: "ready"; quote: { relayer: string; fee: bigint } } | { state: "down"; error: string };
 
+/** Whether tPOT can be spent privately right now, and the relayer's tPOT fee. */
 export function useRelayer(): RelayerState {
   const [s, setS] = useState<RelayerState>({ state: "loading" });
   useEffect(() => {
     let stop = false;
-    relayerQuote().then(
+    const terms = MA ? maRelayerQuote().then((q) => ({ relayer: q.relayer, fee: q.fees[0] })) : relayerQuote();
+    terms.then(
       (quote) => { if (!stop) setS({ state: "ready", quote }); },
       (e) => { if (!stop) setS({ state: "down", error: e?.message || String(e) }); }
     );
