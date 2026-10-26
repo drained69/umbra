@@ -7,6 +7,7 @@ import { usePrivateAccount } from "../lib/privateAccount";
 import { submitShielded } from "../lib/shielded";
 import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
+import CopyButton from "./CopyButton";
 
 type Action = "deposit" | "send" | "withdraw";
 
@@ -56,7 +57,7 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
       {pa.owner && <div className="card" style={{ marginTop: 16 }}>
         <label htmlFor="shielded-address" style={{ marginTop: 0 }}>Shareable private address</label>
         <textarea id="shielded-address" readOnly value={pa.owner.address()} />
-        <button className="ghost" onClick={() => navigator.clipboard.writeText(pa.owner!.address())}>Copy address</button>
+        <CopyButton className="ghost" value={pa.owner!.address()}>Copy address</CopyButton>
       </div>}
     </div>
     <div className="card">

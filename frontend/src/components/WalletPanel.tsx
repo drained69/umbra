@@ -7,6 +7,7 @@ import { usePrivateAccount } from "../lib/privateAccount";
 import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
 import QrCode from "./QrCode";
+import CopyButton from "./CopyButton";
 
 interface Props {
   wallet: Wallet;
@@ -47,9 +48,11 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
   return (
     <>
       <div className="balance-strip">
-        <div><span className="toolbar-label">WALLET · PUBLIC</span><strong>{pub ? fmt(pub.native, pub.nativeDecimals, 4) : "…"} <small>{NATIVE}</small></strong></div>
-        {PUSD && <div><span className="toolbar-label">WALLET · PUBLIC</span><strong>{pub?.pusd != null ? fmt(pub.pusd, PUSD.decimals, 4) : "…"} <small>pUSD</small></strong></div>}
-        <div><span className="toolbar-label">PRIVATE ACCOUNT</span><strong>{pa.owner ? (pa.balance === null ? "…" : fmt(pa.balance, 18, 4)) : "—"} <small>{NATIVE}</small></strong></div>
+        <div><span className="toolbar-label">{NATIVE} balance</span><strong>{pub ? fmt(pub.native, pub.nativeDecimals, 4) : "…"} <small>{NATIVE}</small></strong></div>
+        {PUSD && <div><span className="toolbar-label">pUSD balance</span><strong>{pub?.pusd != null ? fmt(pub.pusd, PUSD.decimals, 4) : "…"} <small>pUSD</small></strong></div>}
+        <div><span className="toolbar-label">Private balance</span>{pa.owner
+          ? <strong>{pa.balance === null ? "…" : fmt(pa.balance, 18, 4)} <small>{NATIVE}</small></strong>
+          : <><strong><small>Not set up</small></strong><button className="text-button" onClick={() => document.getElementById("private-account")?.scrollIntoView({ behavior: "smooth", block: "center" })}>Set up a private account</button></>}</div>
       </div>
 
       <div className="quick-actions">
@@ -69,12 +72,12 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
           {receive === "public" ? (
             <div className="receive-box">
               <QrCode value={myAddress} label="QR code of your public address" />
-              <div><p className="hint">Anyone can see payments to this address.</p><p className="mono wrap">{myAddress}</p><button onClick={() => navigator.clipboard.writeText(myAddress)}>Copy address</button></div>
+              <div><p className="hint">Anyone can see payments to this address.</p><p className="mono wrap">{myAddress}</p><CopyButton value={myAddress}>Copy address</CopyButton></div>
             </div>
           ) : pa.owner ? (
             <div className="receive-box">
               <QrCode value={pa.owner.address()} label="QR code of your private address" />
-              <div><p className="hint">Payments to this address are encrypted: the chain does not show you as the recipient or the amount.</p><p className="mono wrap">{short(pa.owner.address())}</p><button onClick={() => navigator.clipboard.writeText(pa.owner!.address())}>Copy private address</button></div>
+              <div><p className="hint">Payments to this address are encrypted: the chain does not show you as the recipient or the amount.</p><p className="mono wrap">{short(pa.owner.address())}</p><CopyButton value={pa.owner!.address()}>Copy private address</CopyButton></div>
             </div>
           ) : <p className="hint" style={{ marginTop: 14 }}>Create a private account below to get a private address.</p>}
         </div>
@@ -85,12 +88,12 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
         <div className="card">
           <div className="card-title-row"><h2>Activity</h2><button className="text-button" onClick={() => onNavigate("pay", "requests")}>My requests →</button></div>
           {received.length > 0 && <>
-            <span className="toolbar-label" style={{ marginTop: 6 }}>RECEIVED PRIVATELY</span>
+            <span className="toolbar-label" style={{ marginTop: 6 }}>Received privately</span>
             <ul className="list">
               {received.map((h) => <li key={h.utxo.index}><span className="tag private">private</span><span className="grow">{h.text || "Payment"}{h.requestId ? " · request" : ""}</span><strong>+{fmt(h.utxo.amount, 18, 4)} {NATIVE}</strong></li>)}
             </ul>
           </>}
-          <span className="toolbar-label" style={{ marginTop: 12 }}>THIS BROWSER</span>
+          <span className="toolbar-label" style={{ marginTop: 12 }}>Recent</span>
           {activity.length === 0 ? <p className="hint">Payments, requests and swaps you make here appear in this list.</p> : (
             <ul className="list">
               {activity.slice(0, 12).map((a) => <li key={a.id}><span className={`tag ${a.private ? "private" : ""}`}>{a.kind}</span><span className="grow">{a.title}{a.detail && <small> · {a.detail}</small>}</span>{a.href ? <a href={a.href} target="_blank" rel="noreferrer">view ↗</a> : <small>{new Date(a.at).toLocaleDateString()}</small>}</li>)}

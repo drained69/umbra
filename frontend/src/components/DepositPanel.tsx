@@ -3,6 +3,7 @@ import { createNote, commitment, nullifierHash, serializeNote, encryptMemo, type
 import PrivacyVisualizer from "./PrivacyVisualizer";
 import type { AssetInfo } from "../lib/chain";
 import type { Wallet } from "../lib/wallet";
+import CopyButton from "./CopyButton";
 
 export interface TxRef {
   label: string;
@@ -70,20 +71,18 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
           Shield {denomLabel} {asset.symbol}
         </h2>
         <p className="hint">
-          A random note is created in your browser. Only its <b>commitment</b> goes on-chain.
-          {wallet.kind === "native" && " Your Portaldot account calls the pool directly via pallet-revive."}
-          {asset.assetId !== null && ` ${asset.symbol} is Portaldot asset #${asset.assetId}, used through its ERC-20 precompile.`}
+          Umbra creates a secret note in your browser. Only a fingerprint of it goes on chain, and the note is what lets you withdraw later.
+          
+          
         </p>
-        <button onClick={gen}>① Generate note</button>
+        <button onClick={gen}>Create note</button>
         {note && (
           <>
             <div className="note-box" aria-label="Your private note backup">{serializeNote(note)}</div>
-            <button className="ghost" style={{ marginTop: 8 }} onClick={() => navigator.clipboard.writeText(serializeNote(note))}>
-              Copy backup
-            </button>
-            <label className="backup-check"><input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} /> I saved my note backup somewhere private</label>
+            <CopyButton className="ghost" style={{ marginTop: 8 }} value={serializeNote(note)}>Copy backup</CopyButton>
+            <label className="backup-check"><input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} /> I saved this note somewhere safe. Without it the funds cannot be withdrawn.</label>
             <button className="primary" style={{ marginTop: 8 }} onClick={run} disabled={busy || !backupConfirmed || refs.length > 0}>
-              {busy ? "Depositing…" : `② Deposit ${denomLabel} ${asset.symbol}`}
+              {busy ? "Depositing…" : `Deposit ${Number(denomLabel).toLocaleString()} ${asset.symbol}`}
             </button>
           </>
         )}
@@ -106,8 +105,8 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
       </div>
 
       <div className="card">
-        <h2>What leaks?</h2>
-        <p className="hint">The pool hides which note is later spent. Timing and a small anonymity set can still reduce privacy.</p>
+        <h2>What others can see</h2>
+        <p className="hint">The pool hides which deposit a later withdrawal came from. Withdrawing right after depositing, or using a pool few people use, makes that easier to guess.</p>
         {note ? (
           <PrivacyVisualizer
             title="Deposit"
@@ -123,7 +122,7 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
             ]}
           />
         ) : (
-          <p className="hint">Generate a note to see the on-chain vs. secret split.</p>
+          <p className="hint">Create a note to see exactly what becomes public and what stays private.</p>
         )}
       </div>
     </div>

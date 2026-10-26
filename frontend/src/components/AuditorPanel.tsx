@@ -7,6 +7,7 @@ import {
   type Memo,
 } from "@umbra/sdk";
 import { format } from "../lib/chain";
+import CopyButton from "./CopyButton";
 
 interface Props {
   client: UmbraPoolClient;
@@ -60,7 +61,7 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel, decimal
 
   return (
     <div className="card">
-      <h2>Viewing key &amp; selective disclosure</h2>
+      <h2>Viewing keys</h2>
       <p className="hint">
         Review memo history for the {denomLabel} {symbol} pool, or share read-only access with someone you choose.
         This key cannot spend funds, but anyone holding it can inspect memos encrypted for it.
@@ -68,18 +69,12 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel, decimal
 
       <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
         <button disabled={!myViewingKey} onClick={() => myViewingKey && scan(myViewingKey)}>
-          Reveal MY history
+          Show my history
         </button>
-        <button
-          className="ghost"
-          disabled={!myViewingKey}
-          onClick={() => myViewingKey && navigator.clipboard.writeText(exportViewingKey(myViewingKey))}
-        >
-          Copy my viewing key (share with auditor)
-        </button>
+        {myViewingKey && <CopyButton className="ghost" value={exportViewingKey(myViewingKey)}>Copy my viewing key</CopyButton>}
       </div>
 
-      <label htmlFor="shared-viewing-key">Or audit someone who shared their key</label>
+      <label htmlFor="shared-viewing-key">View someone else's history with their viewing key</label>
       <div className="row">
         <input id="shared-viewing-key" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="umbra-vk-…" spellCheck={false} autoCapitalize="off" autoComplete="off" />
         <button
@@ -87,11 +82,11 @@ export default function AuditorPanel({ client, myViewingKey, denomLabel, decimal
             try {
               scan(importViewingKey(keyInput));
             } catch {
-              setStatus({ t: "err", m: "invalid viewing key" });
+              setStatus({ t: "err", m: "That viewing key is not valid." });
             }
           }}
         >
-          Audit
+          View
         </button>
       </div>
 

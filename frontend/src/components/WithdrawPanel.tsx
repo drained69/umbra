@@ -135,7 +135,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
   return (
     <div className="grid">
       <div className="card">
-        <h2>Withdraw privately</h2>
+        <h2>Withdraw a note</h2>
         <p className="hint">
           A zero-knowledge proof shows the pool you own <i>some</i> unspent note — never which one.
         </p>
@@ -182,7 +182,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
       </div>
 
       <div className="card">
-        <h2>What leaks?</h2>
+        <h2>What others can see</h2>
         <p className="hint">The nullifier, recipient, fixed pool size, and transaction sender are public. A small pool or timing can reduce privacy.</p>
         {proof && note ? (
           <PrivacyVisualizer
@@ -200,7 +200,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
             ]}
           />
         ) : (
-          <p className="hint">Run a withdrawal to see what the chain can (and can't) observe.</p>
+          <p className="hint">Start a withdrawal to see exactly what becomes public.</p>
         )}
       </div>
     </div>

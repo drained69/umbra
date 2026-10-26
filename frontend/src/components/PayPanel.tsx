@@ -21,6 +21,7 @@ import type { TxRef } from "../lib/shielded";
 import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
 import QrCode from "./QrCode";
+import CopyButton from "./CopyButton";
 
 export type PaySub = "send" | "request" | "split" | "requests";
 type Status = { t: "ok" | "err" | "info"; m: string; href?: string } | null;
@@ -118,7 +119,7 @@ function SendForm({ wallet }: { wallet: Wallet }) {
           c.account && <button key={c.id + "a"} className={`chip ${to === c.account ? "active" : ""}`} onClick={() => { setTo(c.account!); setToName(c.name); }}>{c.name} · public</button>,
         ].filter(Boolean))}</div>}
         <label htmlFor="send-to">To</label>
-        <textarea id="send-to" className="short" value={to} onChange={(e) => { setTo(e.target.value); setToName(""); }} placeholder="umbra-addr-…, 5… or 0x…" spellCheck={false} autoCapitalize="off" />
+        <textarea id="send-to" className="short" value={to} onChange={(e) => { setTo(e.target.value); setToName(""); }} placeholder="Private address (umbra-addr-…), Portaldot 5… or 0x address" spellCheck={false} autoCapitalize="off" />
         <div className="two-col">
           <div><label htmlFor="send-amount">Amount</label><input id="send-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0" /></div>
           <div><label htmlFor="send-asset">Asset</label><select id="send-asset" value={asset.symbol} disabled={isPrivate} onChange={(e) => setAsset(ASSETS.find((a) => a.symbol === e.target.value)!)}>{ASSETS.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></div>
@@ -175,7 +176,7 @@ function RequestShare({ r }: { r: PaymentRequest }) {
         <strong>{r.amount} {r.asset.symbol}{r.memo ? ` · ${r.memo}` : ""}</strong>
         <p className="hint">Send this link to your friend. Opening it lets them pay you {r.to.shielded ? "privately" : "publicly"} in a few clicks.</p>
         <div className="row">
-          <button className="primary" onClick={() => navigator.clipboard.writeText(link)}>Copy link</button>
+          <CopyButton className="primary" value={link}>Copy link</CopyButton>
           {"share" in navigator && <button onClick={() => navigator.share({ title: "Payment request", text: shareText(r) }).catch(() => {})}>Share…</button>}
         </div>
       </div>
@@ -310,7 +311,7 @@ function SplitForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequests:
     }
   }
 
-  const copyAll = () => navigator.clipboard.writeText(made!.map((m) => `${m.who}: ${requestLink(appUrl(), m.request)}`).join("\n"));
+  const allLinks = made ? made.map((m) => `${m.who}: ${requestLink(appUrl(), m.request)}`).join("\n") : "";
 
   return (
     <div className="grid">
@@ -342,8 +343,8 @@ function SplitForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequests:
       <div className="card">
         <h2>Links</h2>
         {!made ? <p className="hint">Each person's link appears here after you create the split.</p> : <>
-          <ul className="list">{made.map((m) => <li key={m.request.id}><span className="avatar">{m.who!.slice(0, 1).toUpperCase()}</span><span className="grow"><strong>{m.who}</strong><small> · {m.request.amount} {m.request.asset.symbol}</small></span><button className="text-button" onClick={() => navigator.clipboard.writeText(requestLink(appUrl(), m.request))}>Copy link</button></li>)}</ul>
-          <div className="row" style={{ marginTop: 10 }}><button className="primary" onClick={copyAll}>Copy all as a message</button><button onClick={onShowRequests}>Track payments →</button></div>
+          <ul className="list">{made.map((m) => <li key={m.request.id}><span className="avatar">{m.who!.slice(0, 1).toUpperCase()}</span><span className="grow"><strong>{m.who}</strong><small> · {m.request.amount} {m.request.asset.symbol}</small></span><CopyButton className="text-button" value={requestLink(appUrl(), m.request)}>Copy link</CopyButton></li>)}</ul>
+          <div className="row" style={{ marginTop: 10 }}><CopyButton className="primary" value={allLinks}>Copy all as a message</CopyButton><button onClick={onShowRequests}>Track payments →</button></div>
         </>}
       </div>
     </div>
@@ -487,7 +488,7 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
             </>}
           </>}
           <StatusLine s={status} />
-          {receipt && <div className="share-box"><div><strong>Send this receipt back</strong><p className="hint">It lets {req.name ?? "them"} verify your payment on chain.</p><p className="mono wrap">{short(receipt)}</p><div className="row"><button className="primary" onClick={() => navigator.clipboard.writeText(receipt)}>Copy receipt link</button>{"share" in navigator && <button onClick={() => navigator.share({ title: "Payment receipt", url: receipt }).catch(() => {})}>Share…</button>}</div></div></div>}
+          {receipt && <div className="share-box"><div><strong>Send this receipt back</strong><p className="hint">It lets {req.name ?? "them"} verify your payment on chain.</p><p className="mono wrap">{short(receipt)}</p><div className="row"><CopyButton className="primary" value={receipt}>Copy receipt link</CopyButton>{"share" in navigator && <button onClick={() => navigator.share({ title: "Payment receipt", url: receipt }).catch(() => {})}>Share…</button>}</div></div></div>}
           {(paid || mine) && <button className="text-button" style={{ marginTop: 12 }} onClick={onDone}>Back to Umbra →</button>}
         </>}
       </div>

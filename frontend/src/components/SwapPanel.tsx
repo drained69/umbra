@@ -123,7 +123,7 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
     <div className="grid">
       <div className="card swap-card">
         <h2>Swap</h2>
-        <p className="hint">Trades against Portaldot's built-in DEX pool. Quotes are live from the chain.</p>
+        <p className="hint">Live quotes from Portaldot's built-in exchange. With a private account, a swap can also draw from or deliver into your private balance in one transaction.</p>
         <div className="swap-leg">
           <div className="row" style={{ justifyContent: "space-between" }}><span className="toolbar-label">YOU SELL</span><button className="text-button" onClick={() => setAmount(sell === "native" && !privateRoute ? fmtPlain(sellBalance > 2n * 10n ** 13n ? sellBalance - 2n * 10n ** 13n : 0n, 14) : fmtPlain(sellBalance, dec(sell === "native" ? "native" : 7777)))}>Balance: {fmt(sellBalance, dec(sell === "native" ? "native" : 7777), 4)} {sellSym}{privateRoute && sell === "native" ? " (private)" : ""}</button></div>
           <div className="row"><input aria-label={`Amount of ${sellSym} to sell`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0" /><span className="asset-badge">{sellSym}</span></div>
@@ -160,7 +160,7 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
         <button className="primary" onClick={swap} disabled={busy || !quote || !!short_ || (impact > 5 && !ackImpact)}>{busy ? "Working…" : short_ ? `Not enough ${sellSym}` : `Swap ${sellSym} for ${buySym}`}</button>
         <StatusLine s={status} />
       </div>
-      {pa.owner ? <PrivateAccountCard compact /> : <div className="card"><h2>Private swaps</h2><p className="hint">With a private account, a swap can draw from your private balance or deliver straight into it, in one atomic transaction.</p><PrivateAccountCard compact /></div>}
+      <PrivateAccountCard compact />
     </div>
   );
 }

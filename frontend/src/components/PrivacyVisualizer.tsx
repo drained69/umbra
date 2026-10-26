@@ -10,7 +10,7 @@ export default function PrivacyVisualizer({ title, publicRows, privateRows }: Pr
       <h3 style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 8px" }}>{title}</h3>
       <div className="leak">
         <div className="col public">
-          <h3>🌐 On-chain (everyone sees)</h3>
+          <h3>Public on chain</h3>
           {publicRows.map((r, i) => (
             <div className="kv" key={i}>
               <b>{r.k}:</b> {r.v}
@@ -18,7 +18,7 @@ export default function PrivacyVisualizer({ title, publicRows, privateRows }: Pr
           ))}
         </div>
         <div className="col private">
-          <h3>🔒 Not shown in this transaction</h3>
+          <h3>Kept private</h3>
           {privateRows.map((r, i) => (
             <div className="kv" key={i}>
               <b>{r.k}:</b> {r.v}
