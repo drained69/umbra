@@ -39,6 +39,10 @@ This "right VM for the right job" split is the answer to the question every judg
 - **Private account UI**: create or restore a shielded address, deposit arbitrary tPOT amounts,
   send encrypted notes to another user, and withdraw from the same account. The signing
   wallet remains public when it pays gas; the receiver and internal amount are hidden.
+- **Everyday finance**: pay friends privately or publicly, request money with a link or QR code,
+  split a bill, keep contacts, and swap tPOT ↔ pUSD on Portaldot's built-in DEX — including
+  atomic swaps from or into your private balance. Private payments carry an encrypted note that
+  settles the matching request automatically. See [`docs/FINANCE.md`](docs/FINANCE.md).
 - **Read-only viewing keys**: reveal your history to an auditor you choose — never spend power.
 - **Built for Portaldot's storage economics**: deposits allocate no storage (was 8.96 tPOT
   locked per 1 tPOT deposit before the redesign). See

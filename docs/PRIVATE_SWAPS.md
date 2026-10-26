@@ -1,6 +1,8 @@
 # Umbra private swaps: testnet design and venue check
 
-Status: fixed-denomination peer-to-peer prototype implemented locally; DEX-backed variable-amount swap remains a design, 2026-10-25. The observed liquidity fallback is tPOT/pUSDT, correctly labeled pUSDT. Do not show a live Swap action or accept swap funds until the gates below are met.
+Status: fixed-denomination peer-to-peer prototype implemented locally; DEX-backed variable-amount swap remains a design, 2026-10-25. The observed liquidity fallback is tPOT/pUSDT, correctly labeled pUSDT. Do not offer the **private batch swap** below or accept funds for it until the gates below are met.
+
+Update 2026-10-26: the app now has a live **public** swap of tPOT ↔ pUSD #7777 on Portaldot's native `pallet-asset-conversion`, which does hold a Native/pUSD pool (about 153.7 tPOT / 146.4 pUSD). The venue check below only searched the EVM V2 factory. The native swap can be funded from or delivered into the private balance in one atomic extrinsic, but it does not hide the trade amount. See [`FINANCE.md`](FINANCE.md).
 
 This swap is one component of the wider [Umbra privacy-layer design](PRIVACY_LAYER.md), which also specifies the proposed Ethereum Sepolia ↔ Portaldot route and the shared multiasset vault.
 
