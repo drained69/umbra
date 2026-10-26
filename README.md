@@ -87,6 +87,45 @@ All of the above run in CI (`.github/workflows/ci.yml`). See
   privately transfer arbitrary amounts between shielded owners at once. This is the shared
   engine the DEX / voting / payroll variants build on (see Roadmap).
 
+## Deployed contracts — Portaldot V3 testnet
+
+The app does not show contract addresses; they are listed here. Source of truth:
+[`deployments/testnet.json`](deployments/testnet.json).
+
+| | |
+|---|---|
+| Network | Portaldot V3 testnet (EVM chain ID `420420777`) |
+| EVM RPC | `https://test-evm-rpc-v3.portaldot.dev` |
+| Substrate RPC | `wss://test-node-v3.portaldot.dev` |
+| Explorer | [node-console.portaldot.dev](https://node-console.portaldot.dev/) |
+| Deployed | block 169,320, from native account `5Dvps2P4hYwZAwDw2qjTdozWUvwXyFCc98o3RJx2eKHAFXv8` (EVM `0x25a1F91BC0bBd2c87AbDF6fcDDabFACe5B69BAA7`), via native (Portaldot Extension, revive.instantiateWithCode) |
+
+| Contract | Address | Type |
+|---|---|---|
+| Join-split pool (private accounts, payments, swaps) | `0x499298029680abB438bBABd39461805b8EA86d45` | UmbraShieldedPool |
+| 100 tPOT pool | `0x9346d060Df4035d242c42FA5fcEC93b49F17e7Fb` | UmbraPool |
+| 1,000 tPOT pool | `0x1978CdaA0CCE0219a1D63bFf8eBfa5EdE50F1442` | UmbraPool |
+| 100 pUSD pool | `0x66485EC9B55B8d18f13B9Da788DAD0e5E581fC7a` | UmbraTokenPool |
+| 1,000 pUSD pool | `0xfE94fa026bE1BdfeFD23c8C39DF8241704b1Db91` | UmbraTokenPool |
+| Withdraw verifier (Groth16) | `0x624C510f204011F0347c2ba0939acFB629824661` | WithdrawVerifier |
+| Join-split verifier (Groth16) | `0x9e7e6C9c3Af320249803B5794412C6fAC78ea564` | TransactionVerifier |
+| Poseidon(2) hasher | `0x5C4e3060A45F8c6985166e74c1B513A10Aa727A1` | circomlibjs Poseidon |
+| pUSD (asset #7777) ERC-20 precompile | `0x00001E6100000000000000000000000000010000` | pallet-assets, not deployed by Umbra |
+
+Swaps use Portaldot's native DEX (`pallet-asset-conversion`, pool Native / asset #7777), a
+runtime pallet with no contract address. The WASM verifier (ink! coprocessor), its bridge
+and the WASM-verified pool are not deployed yet; see [`docs/CROSS_VM.md`](docs/CROSS_VM.md).
+
+Verify every address above against the chain (read-only):
+
+```bash
+node scripts/verify-native-deployment.js deployments/testnet.json 5Dvps2P4hYwZAwDw2qjTdozWUvwXyFCc98o3RJx2eKHAFXv8
+```
+
+Deployment tools for operators are not linked in the app. They live at `/?admin` (WASM
+verifier) and `/?admin=full` (full contract set), and every step is signed in the Portaldot
+Extension.
+
 ## Networks & mainnet
 
 Target for the hackathon: **Portaldot V3 testnet**. Portaldot also runs **PortaldotV3 Live**
