@@ -8,6 +8,7 @@ import { submitShielded } from "../lib/shielded";
 import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
 import CopyButton from "./CopyButton";
+import { PrivatePoolMeter } from "./PrivacyMeter";
 
 type Action = "deposit" | "send" | "withdraw";
 
@@ -63,6 +64,7 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
     <div className="card">
       <h2>Move private {NATIVE}</h2>
       <p className="hint">Deposit any amount, send to another private address, or withdraw to a 0x wallet. Deposits and withdrawals are public at the pool boundary.</p>
+      <PrivatePoolMeter refreshKey={pa.history.length} />
       <div className="denoms">{(["deposit", "send", "withdraw"] as Action[]).map((item) => <button key={item} className={`chip ${action === item ? "active" : ""}`} aria-pressed={action === item} onClick={() => { setAction(item); setStatus(null); }}>{item === "send" ? "Send privately" : item === "deposit" ? "Deposit" : "Withdraw"}</button>)}</div>
       <label htmlFor="private-amount" style={{ display: "block", marginTop: 16 }}>Amount in {NATIVE}</label>
       <input id="private-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1.0" />

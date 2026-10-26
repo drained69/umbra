@@ -52,7 +52,7 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
         {PUSD && <div><span className="toolbar-label">pUSD balance</span><strong>{pub?.pusd != null ? fmt(pub.pusd, PUSD.decimals, 4) : "…"} <small>pUSD</small></strong></div>}
         <div><span className="toolbar-label">Private balance</span>{pa.owner
           ? <strong>{pa.balance === null ? "…" : fmt(pa.balance, 18, 4)} <small>{NATIVE}</small></strong>
-          : <><strong><small>Not set up</small></strong><button className="text-button" onClick={() => document.getElementById("private-account")?.scrollIntoView({ behavior: "smooth", block: "center" })}>Set up a private account</button></>}</div>
+          : <><strong><small>{pa.locked ? "Locked" : "Not set up"}</small></strong><button className="text-button" onClick={() => document.getElementById("private-account")?.scrollIntoView({ behavior: "smooth", block: "center" })}>{pa.locked ? "Unlock with your passcode" : "Set up a private account"}</button></>}</div>
       </div>
 
       <div className="quick-actions">

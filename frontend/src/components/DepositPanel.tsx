@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createNote, commitment, nullifierHash, serializeNote, encryptMemo, type Note } from "@umbra/sdk";
 import PrivacyVisualizer from "./PrivacyVisualizer";
+import PrivacyMeter, { usePoolSize } from "./PrivacyMeter";
 import type { AssetInfo } from "../lib/chain";
 import type { Wallet } from "../lib/wallet";
 import CopyButton from "./CopyButton";
@@ -17,14 +18,16 @@ interface Props {
   viewingKey: Uint8Array | null;
   wallet: Wallet;
   deposit: (note: Note, memo: Uint8Array) => Promise<TxRef[]>;
+  poolAddress: string;
 }
 
-export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, wallet, deposit }: Props) {
+export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, wallet, deposit, poolAddress }: Props) {
   const [note, setNote] = useState<Note | null>(null);
   const [status, setStatus] = useState<{ t: "ok" | "err" | "info"; m: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [refs, setRefs] = useState<TxRef[]>([]);
+  const poolSize = usePoolSize(poolAddress, refs.length);
   const isToken = asset.assetId !== null || asset.symbol !== "tPOT";
 
   function gen() {
@@ -107,6 +110,13 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
       <div className="card">
         <h2>What others can see</h2>
         <p className="hint">The pool hides which deposit a later withdrawal came from. Withdrawing right after depositing, or using a pool few people use, makes that easier to guess.</p>
+        <PrivacyMeter
+          n={poolSize}
+          title="Pool privacy"
+          detail={poolSize === 0
+            ? "Nobody has used this pool yet. Until others deposit too, your deposit and a later withdrawal would be easy to link."
+            : `${poolSize ?? "…"} deposit${poolSize === 1 ? "" : "s"} in this pool. A withdrawal from it could be any one of them.`}
+        />
         {note ? (
           <PrivacyVisualizer
             title="Deposit"

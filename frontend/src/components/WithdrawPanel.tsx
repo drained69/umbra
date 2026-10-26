@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import {
   UmbraPoolClient,
   parseNote,
   nullifierHash,
+  commitment,
   resolveRecipient,
   buildReviveCall,
   sendNative,
@@ -18,6 +19,7 @@ import {
   type WithdrawProof,
 } from "@umbra/sdk";
 import PrivacyVisualizer from "./PrivacyVisualizer";
+import PrivacyMeter from "./PrivacyMeter";
 import { CROSS_VM, DEPLOYMENT, format, getApi, isCrossVmPool, short, blockLink, type AssetInfo } from "../lib/chain";
 import type { Wallet } from "../lib/wallet";
 
@@ -47,6 +49,35 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
   const [proof, setProof] = useState<WithdrawProof | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   const [resolved, setResolved] = useState<string>("");
+  // Deposits made after this note's: a withdrawal now could only be one of those, or this one.
+  const [since, setSince] = useState<number | null>(null);
+  const [sinceErr, setSinceErr] = useState<string | null>(null);
+  const [ackLinkable, setAckLinkable] = useState(false);
+  useEffect(() => {
+    setSince(null);
+    setSinceErr(null);
+    setAckLinkable(false);
+    let n: Note;
+    try {
+      n = parseNote(noteStr.trim());
+    } catch {
+      return;
+    }
+    let stop = false;
+    const timer = setTimeout(async () => {
+      try {
+        const deposits = await client.scanDeposits();
+        const mine = deposits.find((d) => d.commitment === commitment(n));
+        if (stop) return;
+        if (!mine) setSinceErr("This note's deposit was not found in this pool. Check the pool size and asset above.");
+        else setSince(deposits.length - 1 - mine.leafIndex);
+      } catch {
+        if (!stop) setSinceErr("Could not check this pool's activity right now.");
+      }
+    }, 500);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [noteStr, client]);
+  const linkable = since !== null && since < 5;
 
   async function run() {
     setStatus(null);
@@ -153,7 +184,23 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
           <input type="checkbox" style={{ width: 18 }} checked={useRelayer} onChange={(e) => setUseRelayer(e.target.checked)} />
           <span style={{ color: "var(--ink)" }}>Use relayer (keeps your wallet off the withdrawal transaction)</span>
         </label> : <p className="hint withdrawal-route">Withdrawals are signed by your connected wallet. A gasless relayer is not connected to this app yet.</p>}
-        <button className="primary" style={{ marginTop: 16 }} onClick={run} disabled={!noteStr.trim() || !recipientInput.trim() || (step >= 0 && step < steps.length)}>
+        {sinceErr && <div className="status info">{sinceErr}</div>}
+        {since !== null && (
+          <PrivacyMeter
+            n={since}
+            title="Privacy of this withdrawal"
+            detail={since === 0
+              ? "No one has deposited since you. Anyone watching can tell this withdrawal comes from your deposit."
+              : `${since} deposit${since === 1 ? "" : "s"} since yours. A watcher could narrow this withdrawal to one of ${since + 1} deposits. Waiting for more deposits makes it harder to link.`}
+          />
+        )}
+        {linkable && (
+          <div className="privacy-warning" role="alert">
+            Withdrawing now gives you little privacy.
+            <label><input type="checkbox" checked={ackLinkable} onChange={(e) => setAckLinkable(e.target.checked)} />I understand this withdrawal may be linked to my deposit</label>
+          </div>
+        )}
+        <button className="primary" style={{ marginTop: 16 }} onClick={run} disabled={!noteStr.trim() || !recipientInput.trim() || (linkable && !ackLinkable) || (step >= 0 && step < steps.length)}>
           Withdraw
         </button>
         <ol className="steps">

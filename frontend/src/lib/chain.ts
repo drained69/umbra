@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { ReviveProvider } from "@umbra/sdk";
+import { HybridProvider, ReviveProvider } from "@umbra/sdk";
 import deployment from "../config/deployment.json";
 
 /** Network presets (verified live). V3 Live = Portaldot mainnet V3.0: no EVM JSON-RPC. */
@@ -46,12 +46,15 @@ export function getApi(): Promise<ApiPromise> {
 }
 
 /**
- * Read access to the contracts (pool state, events, balances): the EVM JSON-RPC when the
- * network has one, otherwise ReviveProvider over Substrate RPC — verified to return results
- * identical to the EVM RPC (sdk/test/revive_provider_equivalence.ts).
+ * Read access to the contracts (pool state, events, balances). State reads use the EVM
+ * JSON-RPC when the network has one; event logs always come from native revive events,
+ * because the EVM RPC does not index calls made from native accounts — the Portaldot
+ * Extension path (sdk/test/native_logs_live.ts). Without an EVM RPC, ReviveProvider does both.
  */
+/** Logs come from native events, scanned in parallel: ask for the whole range in one request. */
+export const SCAN_CHUNK = 1_000_000;
 export const readProvider: ethers.Provider = HAS_EVM_RPC
-  ? new ethers.JsonRpcProvider(DEPLOYMENT.rpc, Number(DEPLOYMENT.chainId), { staticNetwork: true })
+  ? new HybridProvider(DEPLOYMENT.rpc, Number(DEPLOYMENT.chainId), getApi)
   : new ReviveProvider(getApi, Number(DEPLOYMENT.chainId));
 
 /**

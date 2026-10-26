@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ethers } from "ethers";
 import { UmbraPoolClient, UmbraNative, exportViewingKey, type Note } from "@umbra/sdk";
-import { DEPLOYMENT, NATIVE, HAS_EVM_RPC, assets, isCrossVmPool, format, getApi, readProvider, short, blockLink, PORTALDOT_EXTENSION_URL } from "./lib/chain";
+import { DEPLOYMENT, NATIVE, HAS_EVM_RPC, SCAN_CHUNK, assets, isCrossVmPool, format, getApi, readProvider, short, blockLink, PORTALDOT_EXTENSION_URL } from "./lib/chain";
 import { connectEvm, connectNative, getViewingKey, listNativeAccounts, restoreViewingKey, type NativeAccount, type Wallet } from "./lib/wallet";
 import type { TxRef } from "./components/DepositPanel";
 import CopyButton from "./components/CopyButton";
@@ -98,7 +98,8 @@ export default function App() {
   const client = useMemo(() => {
     if (!configured || !asset) return null;
     const runner = wallet?.kind === "evm" ? wallet.signer : readProvider;
-    return new UmbraPoolClient(poolAddr!, runner, { deployBlock: DEPLOYMENT.deployBlock ?? 0, assetRules: asset.rules });
+    // scans always use readProvider: an EVM wallet's RPC misses native-account deposits
+    return new UmbraPoolClient(poolAddr!, runner, { deployBlock: DEPLOYMENT.deployBlock ?? 0, assetRules: asset.rules, logProvider: readProvider, chunkSize: SCAN_CHUNK });
   }, [wallet, poolAddr, configured, asset]);
 
   // balances
@@ -317,7 +318,7 @@ export default function App() {
                 {!configured && POOL_TABS.includes(tab) && <div className="notice-card"><span>ⓘ</span><div><strong>Not available on this network</strong><p>Shielded pools have not been set up here yet.</p></div></div>}
                 {asset && POOL_TABS.includes(tab) && <div className="asset-toolbar"><div><span className="toolbar-label">Asset</span><div className="denoms">{assetList.map((a) => <button key={a.symbol} className={`chip ${a.symbol === assetSym ? "active" : ""}`} aria-pressed={a.symbol === assetSym} onClick={() => setAssetSym(a.symbol)}>{a.symbol}</button>)}</div></div><div><span className="toolbar-label">Pool size</span><div className="denoms">{denoms.map((d) => <button key={d} className={`chip ${d === denom ? "active" : ""}`} aria-pressed={d === denom} onClick={() => setDenom(d)}>{Number(d).toLocaleString()} {asset.symbol}</button>)}</div></div><div className="toolbar-summary"><span>Selected pool</span><strong>{Number(denom).toLocaleString()} {asset.symbol}</strong></div></div>}
                 <Suspense fallback={<div className="loading-panel" role="status">Loading…</div>}>
-                  {client && tab === "deposit" && asset && <DepositPanel key={poolAddr} asset={asset} denomLabel={denom} denomWei={ethers.parseUnits(denom, asset.decimals)} viewingKey={viewingKey} deposit={deposit} wallet={wallet} />}
+                  {client && tab === "deposit" && asset && <DepositPanel key={poolAddr} poolAddress={poolAddr!} asset={asset} denomLabel={denom} denomWei={ethers.parseUnits(denom, asset.decimals)} viewingKey={viewingKey} deposit={deposit} wallet={wallet} />}
                   {client && tab === "withdraw" && asset && <WithdrawPanel key={poolAddr} client={client} wallet={wallet} asset={asset} relayerUrl={RELAYER_URL} />}
                   {client && tab === "auditor" && asset && <AuditorPanel key={poolAddr} client={client} myViewingKey={viewingKey} denomLabel={denom} decimals={asset.decimals} symbol={asset.symbol} />}
                   {tab === "transfer" && (privateAccountReady ? <PrivateTransferPanel wallet={wallet} /> : <div className="notice-card"><span>ⓘ</span><div><strong>Not available on this network</strong><p>Private accounts have not been set up here yet.</p></div></div>)}

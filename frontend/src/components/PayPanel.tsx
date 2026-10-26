@@ -22,6 +22,7 @@ import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
 import QrCode from "./QrCode";
 import CopyButton from "./CopyButton";
+import { PrivatePoolMeter } from "./PrivacyMeter";
 
 export type PaySub = "send" | "request" | "split" | "requests";
 type Status = { t: "ok" | "err" | "info"; m: string; href?: string } | null;
@@ -134,6 +135,7 @@ function SendForm({ wallet }: { wallet: Wallet }) {
           </div>
         </>}
         <PrivacyNote mode={isPrivate ? (effectiveSource === "private" ? "private" : "wallet-to-private") : to.trim() ? "public" : null} />
+        {isPrivate && <PrivatePoolMeter />}
         <button className="primary" onClick={send} disabled={busy || !to.trim() || units <= 0n}>{busy ? "Working…" : isPrivate ? "Send privately" : "Send"}</button>
         <StatusLine s={status} />
       </div>
@@ -194,6 +196,7 @@ function RequestForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequest
   const [memo, setMemo] = useState("");
   const [who, setWho] = useState("");
   const [privately, setPrivately] = useState(true);
+  const [alsoPublic, setAlsoPublic] = useState(false);
   const [created, setCreated] = useState<PaymentRequest | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const privateOk = asset.assetId === null && !!targets.shielded;
@@ -210,7 +213,8 @@ function RequestForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequest
         asset,
         amount: amount.trim(),
         // private requests also list the public account, so a friend without tPOT in a private account can still pay
-        to: { ...(usePrivate ? { shielded: targets.shielded! } : {}), ...(targets.account ? { account: targets.account } : {}) },
+        // a private request shares only the private address unless the requester opts in
+        to: usePrivate ? { shielded: targets.shielded!, ...(alsoPublic && targets.account ? { account: targets.account } : {}) } : { account: targets.account! },
         name: name.trim() || undefined,
         memo: memo.trim() || undefined,
       });
@@ -238,6 +242,7 @@ function RequestForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequest
           <div><label htmlFor="rq-who">From (for your list)</label><input id="rq-who" value={who} onChange={(e) => setWho(e.target.value)} placeholder="Bob" maxLength={40} /></div>
         </div>
         <label className="row check-row"><input type="checkbox" checked={privately && privateOk} disabled={!privateOk} onChange={(e) => setPrivately(e.target.checked)} />Get paid privately to my private address{asset.assetId !== null ? ` (${NATIVE} only)` : !targets.shielded ? " (create a private account first)" : ""}</label>
+        {privately && privateOk && <label className="check-row"><input type="checkbox" checked={alsoPublic} onChange={(e) => setAlsoPublic(e.target.checked)} />Also let them pay from a public wallet. This puts your public address in the link.</label>}
         <button className="primary" onClick={create} disabled={!amount.trim()}>Create request</button>
         {err && <div className="status err" role="alert">{err}</div>}
         {created && <><RequestShare r={created} /><button className="text-button" onClick={onShowRequests}>See all my requests →</button></>}
@@ -272,6 +277,7 @@ function SplitForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequests:
   const [memo, setMemo] = useState("");
   const [people, setPeople] = useState<string[]>(["", ""]);
   const [includeMe, setIncludeMe] = useState(true);
+  const [alsoPublic, setAlsoPublic] = useState(false);
   const [made, setMade] = useState<StoredRequest[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -298,7 +304,8 @@ function SplitForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequests:
           chainId: Number(DEPLOYMENT.chainId),
           asset,
           amount: theirs[i],
-          to: { ...(usePrivate ? { shielded: targets.shielded! } : {}), ...(targets.account ? { account: targets.account } : {}) },
+          // a private request shares only the private address unless the requester opts in
+        to: usePrivate ? { shielded: targets.shielded!, ...(alsoPublic && targets.account ? { account: targets.account } : {}) } : { account: targets.account! },
           name: name.trim() || undefined,
           memo: memo.trim() ? `${memo.trim()} (split)` : "Split bill",
         }),
@@ -337,6 +344,7 @@ function SplitForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequests:
           <button onClick={() => setPeople([...people, ""])} disabled={people.length >= 20}>Add person</button>
           <label className="row check-row" style={{ margin: 0 }}><input type="checkbox" checked={includeMe} onChange={(e) => setIncludeMe(e.target.checked)} />Include my share{includeMe && shares.length ? ` (${shares[0]} ${asset.symbol})` : ""}</label>
         </div>
+        {asset.assetId === null && targets.shielded && <label className="check-row"><input type="checkbox" checked={alsoPublic} onChange={(e) => setAlsoPublic(e.target.checked)} />Also let them pay from a public wallet. This puts your public address in each link.</label>}
         <button className="primary" style={{ marginTop: 14 }} onClick={create} disabled={!named.length || !total.trim()}>Create {named.length || ""} request{named.length === 1 ? "" : "s"}</button>
         {err && <div className="status err" role="alert">{err}</div>}
       </div>
@@ -480,6 +488,7 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
                 <button disabled={busy} onClick={() => pay("wallet")}>From my wallet</button>
               </div>
               <p className="privacy-note private">{fromPrivate ? "From your private balance, nobody can see who paid whom or how much." : "From your wallet, the recipient stays hidden but your wallet and the amount are visible as a deposit."}</p>
+              <PrivatePoolMeter />
             </>}
             {req.to.account && <>
               <span className="toolbar-label" style={{ marginTop: 16 }}>PAY PUBLICLY</span>
