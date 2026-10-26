@@ -53,6 +53,7 @@ mod umbra_coprocessor {
         NotOnCurve,
         NotInSubgroup,
         WrongInputCount,
+        InvalidProof,
     }
     pub type Result<T> = core::result::Result<T, Error>;
 
@@ -95,6 +96,18 @@ mod umbra_coprocessor {
             Ok(ok)
         }
 
+        /// `verify`, but reverts unless the proof is valid. Returning `Err` sets ink!'s revert
+        /// flag, so `contracts.call` fails with `ContractReverted` and a `utility.batchAll`
+        /// that also attests on the EVM side is rolled back with it.
+        #[ink(message)]
+        pub fn verify_or_revert(&mut self, a: [Word; 2], b: [Word; 4], c: [Word; 2], inputs: Vec<Word>) -> Result<()> {
+            if self.verify(a, b, c, inputs)? {
+                Ok(())
+            } else {
+                Err(Error::InvalidProof)
+            }
+        }
+
         /// Read-only verification (no state change) — what a relayer dry-runs.
         #[ink(message)]
         pub fn check(&self, a: [Word; 2], b: [Word; 4], c: [Word; 2], inputs: Vec<Word>) -> Result<bool> {
@@ -119,7 +132,7 @@ mod umbra_coprocessor {
                 return Err(Error::NotOwner);
             }
             umbra_groth16::verifying_key(&vk)?;
-            let words = vk.len() as u32;
+            let words = u32::try_from(vk.len()).map_err(|_| Error::BadVerifyingKey)?;
             self.vk = vk;
             self.env().emit_event(VerifyingKeyRotated { words });
             Ok(())

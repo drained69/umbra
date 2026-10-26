@@ -38,11 +38,12 @@ pub enum Error {
 }
 
 fn limbs_be(w: &Word) -> BigInt<4> {
+    // Big-endian word: the first 8 bytes are the most significant limb (limbs[3]).
     let mut limbs = [0u64; 4];
-    for i in 0..4 {
-        let mut chunk = [0u8; 8];
-        chunk.copy_from_slice(&w[i * 8..i * 8 + 8]);
-        limbs[3 - i] = u64::from_be_bytes(chunk);
+    for (limb, chunk) in limbs.iter_mut().rev().zip(w.chunks_exact(8)) {
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(chunk);
+        *limb = u64::from_be_bytes(bytes);
     }
     BigInt::new(limbs)
 }
@@ -84,11 +85,15 @@ fn g2(w: &[Word]) -> Result<G2Affine, Error> {
 /// Verifying key from words:
 /// `alpha(2) | beta(4) | gamma(4) | delta(4) | IC_0..IC_n (2 each)` — G2 in EVM order.
 pub fn verifying_key(words: &[Word]) -> Result<VerifyingKey<Bn254>, Error> {
-    if words.len() < 16 || (words.len() - 14) % 2 != 0 {
+    if words.len() < 16 {
         return Err(Error::BadVerifyingKey);
     }
-    let mut ic = Vec::with_capacity((words.len() - 14) / 2);
-    for pair in words[14..].chunks(2) {
+    let pairs = words[14..].chunks_exact(2);
+    if !pairs.remainder().is_empty() {
+        return Err(Error::BadVerifyingKey);
+    }
+    let mut ic = Vec::with_capacity(pairs.len());
+    for pair in pairs {
         ic.push(g1(&pair[0], &pair[1])?);
     }
     Ok(VerifyingKey {
@@ -107,7 +112,7 @@ pub fn verifying_key(words: &[Word]) -> Result<VerifyingKey<Bn254>, Error> {
 /// * `inputs`: public signals in circuit order.
 pub fn verify(vk_words: &[Word], a: &[Word; 2], b: &[Word; 4], c: &[Word; 2], inputs: &[Word]) -> Result<bool, Error> {
     let vk = verifying_key(vk_words)?;
-    if inputs.len() + 1 != vk.gamma_abc_g1.len() {
+    if vk.gamma_abc_g1.len().checked_sub(1) != Some(inputs.len()) {
         return Err(Error::WrongInputCount);
     }
     let proof = Proof::<Bn254> { a: g1(&a[0], &a[1])?, b: g2(b)?, c: g1(&c[0], &c[1])? };
@@ -122,7 +127,7 @@ pub fn verify(vk_words: &[Word], a: &[Word; 2], b: &[Word; 4], c: &[Word; 2], in
 /// Canonical byte encoding of a proof + inputs (`a | b | c | inputs`), used to key cached
 /// results. The contract hashes THIS — never a caller-supplied hash (audit H-02).
 pub fn canonical_encoding(a: &[Word; 2], b: &[Word; 4], c: &[Word; 2], inputs: &[Word]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(32 * (8 + inputs.len()));
+    let mut out = Vec::with_capacity(inputs.len().saturating_add(8).saturating_mul(32));
     for w in a.iter().chain(b.iter()).chain(c.iter()).chain(inputs.iter()) {
         out.extend_from_slice(w);
     }

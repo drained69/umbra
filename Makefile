@@ -70,8 +70,12 @@ relayer:
 frontend:
 	cd frontend && npm run dev
 
+# cargo-contract 5.0.3 needs a toolchain that predates the immediate-abort panic strategy.
+INK_TOOLCHAIN := 1.86.0
+
 coprocessor:
-	cd coprocessor/contract && cargo contract build --release
+	cd coprocessor/contract && cargo +$(INK_TOOLCHAIN) contract build --release
+	cd scripts && node export-coprocessor.js
 
 clean:
 	rm -rf contracts/out contracts/cache circuits/build coprocessor/target frontend/dist frontend/public/zk

@@ -23,6 +23,7 @@ const contracts = {
   UmbraPool: code("UmbraPool"),
   UmbraTokenPool: code("UmbraTokenPool"),
   UmbraShieldedPool: code("UmbraShieldedPool"),
+  UmbraCoprocessorBridge: code("UmbraCoprocessorBridge"),
   DeployHarness: code("DeployHarness"), // read-only cost estimation only
 };
 const path = join(__dirname, "..", "sdk", "artifacts", "contracts.json");
