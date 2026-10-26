@@ -1,0 +1,43 @@
+{
+  "network": "portaldot-v3-testnet",
+  "chainId": 420420777,
+  "rpc": "https://test-evm-rpc-v3.portaldot.dev",
+  "decimals": 18,
+  "nativeDecimals": 14,
+  "substrateWs": "wss://test-node-v3.portaldot.dev",
+  "deployBlock": 169320,
+  "verifierMode": "onchain",
+  "treeLevels": 20,
+  "relayerFeeBps": 50,
+  "contracts": {
+    "poseidon": "0x5C4e3060A45F8c6985166e74c1B513A10Aa727A1",
+    "withdrawVerifier": "0x624C510f204011F0347c2ba0939acFB629824661",
+    "transactionVerifier": "0x9e7e6C9c3Af320249803B5794412C6fAC78ea564",
+    "verifier": "0x624C510f204011F0347c2ba0939acFB629824661",
+    "factory": null,
+    "pools": {
+      "100": "0x9346d060Df4035d242c42FA5fcEC93b49F17e7Fb",
+      "1000": "0x1978CdaA0CCE0219a1D63bFf8eBfa5EdE50F1442"
+    },
+    "tokens": {
+      "pUSD": {
+        "assetId": 7777,
+        "address": "0x00001E6100000000000000000000000000010000",
+        "decimals": 6,
+        "sufficient": false,
+        "minBalance": "10000",
+        "pools": {
+          "100": "0x66485EC9B55B8d18f13B9Da788DAD0e5E581fC7a",
+          "1000": "0xfE94fa026bE1BdfeFD23c8C39DF8241704b1Db91"
+        }
+      }
+    },
+    "shieldedPool": "0x499298029680abB438bBABd39461805b8EA86d45"
+  },
+  "deployedAt": "2026-10-24T16:31:43.612Z",
+  "deployer": {
+    "native": "5Dvps2P4hYwZAwDw2qjTdozWUvwXyFCc98o3RJx2eKHAFXv8",
+    "evm": "0x25a1F91BC0bBd2c87AbDF6fcDDabFACe5B69BAA7"
+  },
+  "deployedVia": "native (Portaldot Extension, revive.instantiateWithCode)"
+}
