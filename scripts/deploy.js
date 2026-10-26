@@ -177,6 +177,20 @@ async function main() {
   const shieldedAddr = await shielded.getAddress();
   console.log(`shielded pool (join-split): ${shieldedAddr}`);
 
+  // 5. Multi-asset private balance (native + the shielded tokens) with private swaps
+  const maVerifier = await (await deploy(wallet, artifact("MultiAssetVerifier", "MultiAssetVerifier"))).getAddress();
+  const maTokens = Object.values(tokens).map((t) => t.address);
+  const ma = await deploy(wallet, artifact("UmbraMultiAssetPool", "UmbraMultiAssetPool"), [maVerifier, hasher, LEVELS, maTokens]);
+  const multiAssetPool = {
+    address: await ma.getAddress(),
+    verifier: maVerifier,
+    // asset id -> token; id 0 is the native token
+    assets: [{ id: 0, symbol: NETWORK === "testnet" ? "tPOT" : "POT", address: null, decimals: Number(DECIMALS) }].concat(
+      Object.entries(tokens).map(([symbol, t], i) => ({ id: i + 1, symbol, address: t.address, assetId: t.assetId, decimals: t.decimals }))
+    ),
+  };
+  console.log(`multi-asset pool: ${multiAssetPool.address}`);
+
   const deployment = {
     network: net.name,
     chainId: CHAIN_ID,
@@ -197,6 +211,7 @@ async function main() {
       pools,
       tokens,
       shieldedPool: shieldedAddr,
+      multiAssetPool,
     },
     deployedAt: new Date().toISOString(),
     deployer: wallet.address,

@@ -20,8 +20,12 @@ const FILES = [
   "sdk/artifacts/transaction.wasm",
   "sdk/artifacts/transaction_final.zkey",
   "sdk/artifacts/transaction_verification_key.json",
+  "sdk/artifacts/multiasset.wasm",
+  "sdk/artifacts/multiasset_final.zkey",
+  "sdk/artifacts/multiasset_verification_key.json",
   "contracts/src/verifiers/WithdrawVerifier.sol",
   "contracts/src/verifiers/TransactionVerifier.sol",
+  "contracts/src/verifiers/MultiAssetVerifier.sol",
   "sdk/artifacts/contracts.json",
   "sdk/artifacts/coprocessor.json",
 ];

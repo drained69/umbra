@@ -17,6 +17,8 @@ import { dirname, join } from "node:path";
 import {
   UmbraPoolClient,
   UmbraShieldedClient,
+  UmbraMultiAssetClient,
+  MULTI_ASSET_POOL_ABI,
   createNote,
   commitment,
   nullifierHash,
@@ -177,6 +179,57 @@ async function main() {
     sp.transact({ inputs: [b2], outputs: [], owner: B, extAmount: -toEvmWei("2"), recipient: bobFresh, artifacts: ART_T }, alice),
     "join-split double-spend reverts"
   );
+
+  // ---------------- multi-asset pool: tPOT + pUSD in one private balance, private swaps ----------------
+  console.log("Multi-asset pool:");
+  const ART_M = { wasm: join(ROOT, "sdk", "artifacts", "multiasset.wasm"), zkey: join(ROOT, "sdk", "artifacts", "multiasset_final.zkey") };
+  const maAddr = dep.contracts.multiAssetPool.address;
+  const ma = new UmbraMultiAssetClient(maAddr, alice, { deployBlock: dep.deployBlock, chunkSize: 50 });
+  const TP = 0n, PU = 1n;
+  const pu = (x: string) => ethers.parseUnits(x, 6);
+  const maUsd = new ethers.Contract(dep.contracts.multiAssetPool.assets[1].address, ["function balanceOf(address) view returns (uint256)", "function transfer(address,uint256) returns (bool)", "function approve(address,uint256) returns (bool)"], alice);
+  const C = new Keypair();
+  const D = new Keypair();
+  const bal = async (k: Keypair) => UmbraMultiAssetClient.balances(await ma.myNotes(k));
+
+  await ma.transact(ma.planDeposit(C, TP, toEvmWei("10")), ART_M, alice);
+  await ma.transact(ma.planDeposit(C, PU, pu("300")), ART_M, alice);
+  let bc = await bal(C);
+  check(bc.get(TP) === toEvmWei("10") && bc.get(PU) === pu("300"), "one private balance holds 10 tPOT and 300 pUSD");
+
+  await ma.transact(await ma.planPayment({ owner: C, to: D.address(), asset: PU, amount: pu("100"), memo: "rent" }), ART_M, alice);
+  const dNotes = await ma.myNotes(D);
+  check(UmbraMultiAssetClient.balances(dNotes).get(PU) === pu("100") && dNotes[0].utxo.memo === "rent", "private pUSD payment, with its encrypted note, reaches D");
+
+  // the relayer (counterparty) holds pUSD and delivers it in the same call
+  await (await maUsd.transfer(relayer.address, pu("200"))).wait();
+  await (await (maUsd.connect(relayer) as ethers.Contract).approve(maAddr, pu("200"))).wait();
+  const terms = { relayer: relayer.address, fee: toEvmWei("0.1") };
+  const sell = await ma.prepare(await ma.planSwap({ owner: C, sell: TP, buy: PU, amountIn: toEvmWei("4"), amountOut: pu("50"), relay: terms }), ART_M);
+  const [sArgs, sExt] = UmbraMultiAssetClient.encodeArgs(sell.proof, sell.ext);
+  const maAsRelayer = new ethers.Contract(maAddr, MULTI_ASSET_POOL_ABI, relayer);
+  const maAsAlice = new ethers.Contract(maAddr, MULTI_ASSET_POOL_ABI, alice);
+  await expectRevert(maAsAlice.transact(sArgs, sExt).then((t: any) => t.wait()), "only the named counterparty can execute a swap proof");
+  await expectRevert(maAsRelayer.transact({ ...sArgs, swapAmount: pu("51") }, sExt).then((t: any) => t.wait()), "a swap amount changed after proving fails the real verifier");
+  const poolNativeBefore = await provider.getBalance(maAddr);
+  const relayerUsdBefore: bigint = await maUsd.balanceOf(relayer.address);
+  await (await maAsRelayer.transact(sArgs, sExt)).wait();
+  bc = await bal(C);
+  check(bc.get(TP) === toEvmWei("5.9") && bc.get(PU) === pu("250"), "private swap: C sold 4 tPOT (+0.1 fee) for a new 50 pUSD note");
+  check(poolNativeBefore - (await provider.getBalance(maAddr)) === toEvmWei("4.1") && relayerUsdBefore - (await maUsd.balanceOf(relayer.address)) === pu("50"), "the counterparty was paid 4.1 tPOT for delivering 50 pUSD");
+
+  const buy = await ma.prepare(await ma.planSwap({ owner: C, sell: PU, buy: TP, amountIn: pu("20"), amountOut: toEvmWei("1"), relay: { relayer: relayer.address, fee: pu("0.5") } }), ART_M);
+  const [bArgs, bExt] = UmbraMultiAssetClient.encodeArgs(buy.proof, buy.ext);
+  await expectRevert(maAsRelayer.transact(bArgs, bExt, { value: toEvmWei("0.9") }).then((t: any) => t.wait()), "short native delivery reverts");
+  await (await maAsRelayer.transact(bArgs, bExt, { value: UmbraMultiAssetClient.valueFor(buy.proof, buy.ext) })).wait();
+  bc = await bal(C);
+  check(bc.get(TP) === toEvmWei("6.9") && bc.get(PU) === pu("229.5"), "reverse swap: C sold 20 pUSD (+0.5 fee) for 1 tPOT");
+
+  const dOut = ethers.Wallet.createRandom().address;
+  await expectRevert(ma.planWithdrawal(D, PU, pu("100"), dOut).then((p) => ma.prepare(p, ART_M)), "refuses a pUSD withdrawal to an account without tPOT");
+  await (await alice.sendTransaction({ to: dOut, value: toEvmWei("1") })).wait();
+  await ma.transact(await ma.planWithdrawal(D, PU, pu("100"), dOut), ART_M, alice);
+  check((await maUsd.balanceOf(dOut)) === pu("100"), "D withdrew 100 pUSD");
 
   console.log(`\nE2E PASSED: ${passed} checks`);
   process.exit(0);

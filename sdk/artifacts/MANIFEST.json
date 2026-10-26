@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-26T07:06:06.321Z",
+  "generatedAt": "2026-10-26T14:00:50.911Z",
   "setup": "local-single-contributor (DEMO ONLY)",
   "files": {
     "sdk/artifacts/withdraw.wasm": "2b60bc368b7d7a5b58bb6891f232faf311b20a19e14c861a0e46a071b9359b1f",
@@ -8,8 +8,12 @@
     "sdk/artifacts/transaction.wasm": "182beced57452dff0455288a3c78348326249f6beb6cec9572fdf8e8c2911275",
     "sdk/artifacts/transaction_final.zkey": "0b67fa7e332b46ddeef4725b1741a96ee461b8e90391c4e9208f8b6392fa944f",
     "sdk/artifacts/transaction_verification_key.json": "d96a0b4e862e7da09d8964aab13d78d7e4d1b4a8e02894750e910dd49260d3f7",
+    "sdk/artifacts/multiasset.wasm": "52f7d56a8c1c3a741af59201ea3ba2d352e0211016bacfc747880568120380b6",
+    "sdk/artifacts/multiasset_final.zkey": "55a7e4bccb0f00b4d07040dce9454593f4b54d0e4432523357746962454b0deb",
+    "sdk/artifacts/multiasset_verification_key.json": "82cf067605dc29d742cb781c9439548f814cf1bd03c27d01ab0db89e01024328",
     "contracts/src/verifiers/WithdrawVerifier.sol": "5a1371779bf8ed6b49a69825faa61b113adca1ae3c887dd2f6bab9bdf22b07dc",
     "contracts/src/verifiers/TransactionVerifier.sol": "6568258e45eecb163faf73b5b8ddd189e0c01183e0205b9e823da777123f1610",
+    "contracts/src/verifiers/MultiAssetVerifier.sol": "490ccd42e11db525fa35c709b3b905e956ae196cf1cc9a622346077b0fd0c372",
     "sdk/artifacts/contracts.json": "26bbf8eeb903ec7e9804bba63cd189254f833bdbabf46799284fe8ca19e3bb80",
     "sdk/artifacts/coprocessor.json": "7e4cbd7d0b697f3563c1991ebab1bc49292194d391246af39ac445e29a7c7383"
   }

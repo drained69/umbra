@@ -18,6 +18,13 @@ export interface ExtData {
   encryptedOutput2: Uint8Array;
 }
 
+/** Extra public inputs of the multi-asset circuit (multiasset.circom). */
+export interface MultiAssetSignals {
+  publicAsset: bigint;
+  swapAsset: bigint; // 0 unless swapAmount > 0
+  swapAmount: bigint; // amount of swapAsset minted as output 1; 0 for a plain transaction
+}
+
 export interface TransactionProof {
   a: [string, string];
   b: [[string, string], [string, string]];
@@ -28,6 +35,7 @@ export interface TransactionProof {
   extDataHash: bigint;
   inputNullifiers: [bigint, bigint];
   outputCommitments: [bigint, bigint];
+  multi?: MultiAssetSignals;
 }
 
 // Must equal Solidity `abi.encode(extData)` for the ExtData STRUCT. Because the struct has
@@ -59,14 +67,17 @@ export function extDataHash(ext: ExtData): bigint {
  * @param inputs  exactly 2 input UTXOs (use zero-amount dummies to pad)
  * @param outputs exactly 2 output UTXOs
  * @param leaves  ordered commitment list of the pool (to build Merkle paths for real inputs)
+ * @param multi   for the multi-asset circuit: every UTXO must carry an asset id
  */
 export async function buildTransaction(
   inputs: [Utxo, Utxo],
   outputs: [Utxo, Utxo],
   leaves: bigint[],
   ext: ExtData,
-  artifacts: ProvingArtifacts
+  artifacts: ProvingArtifacts,
+  multi?: MultiAssetSignals
 ): Promise<TransactionProof> {
+  if (multi && [...inputs, ...outputs].some((u) => u.asset === undefined)) throw new Error("multi-asset notes need an asset id");
   const tree = new MerkleTree(leaves, TREE_LEVELS);
   const root = leaves.length ? tree.root() : treeEmptyRoot();
 
@@ -110,7 +121,7 @@ export async function buildTransaction(
   const publicAmount = calculatePublicAmount(ext.extAmount, ext.fee);
   const edHash = extDataHash(ext);
 
-  const input = {
+  const input: Record<string, unknown> = {
     root: (leaves.length ? root : treeEmptyRoot()).toString(),
     publicAmount: publicAmount.toString(),
     extDataHash: edHash.toString(),
@@ -125,6 +136,15 @@ export async function buildTransaction(
     outPubkey,
     outBlinding,
   };
+  if (multi) {
+    Object.assign(input, {
+      publicAsset: multi.publicAsset.toString(),
+      swapAsset: multi.swapAsset.toString(),
+      swapAmount: multi.swapAmount.toString(),
+      inAsset: inputs.map((u) => u.asset!.toString()),
+      outAsset: outputs.map((u) => u.asset!.toString()),
+    });
+  }
 
   // Keep proof-generation code out of the initial app bundle.
   // @ts-ignore - snarkjs ships no types
@@ -139,11 +159,12 @@ export async function buildTransaction(
     ],
     c: [proof.pi_c[0], proof.pi_c[1]],
     publicSignals,
-    root: BigInt(input.root),
+    root: BigInt(input.root as string),
     publicAmount,
     extDataHash: edHash,
     inputNullifiers: [inputNullifiers[0], inputNullifiers[1]],
     outputCommitments: [outputCommitments[0], outputCommitments[1]],
+    multi,
   };
 }
 

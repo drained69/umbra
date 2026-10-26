@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Umbra ZK trusted setup for BOTH circuits:
+# Umbra ZK trusted setup for the circuits:
 #   * withdraw     (fixed-denomination pool)
 #   * transaction  (join-split / arbitrary-value shielded transfers)
+#   * multiasset   (multi-asset join-split with a private swap leg)
+#
+# CIRCUITS="name:Verifier ..." builds a subset; REUSE_PTAU=1 keeps an existing phase-1 file
+# (so adding a circuit does not change the keys of circuits that are already deployed).
 #
 # Phase 1 (Powers of Tau) is universal and shared by both circuits.
 #
@@ -24,7 +28,9 @@ mkdir -p "$BUILD"
 [ -d node_modules/circomlib ] || npm install --no-audit --no-fund --silent
 
 # ---- Phase 1: Powers of Tau (shared) ----
-if [ -n "$PTAU_URL" ]; then
+if [ "${REUSE_PTAU:-}" = "1" ] && [ -f "$BUILD/pot_final.ptau" ]; then
+  echo "==> [phase1] reusing $BUILD/pot_final.ptau"
+elif [ -n "$PTAU_URL" ]; then
   echo "==> [phase1] downloading production ptau: $PTAU_URL"
   curl -L --fail -o "$BUILD/pot_final.ptau" "$PTAU_URL"
 else
@@ -58,10 +64,11 @@ build_circuit () {
   cp "$BUILD/${NAME}_verification_key.json" "$dest/${NAME}_verification_key.json"
 }
 
-build_circuit "withdraw" "WithdrawVerifier"
-build_circuit "transaction" "TransactionVerifier"
+for spec in ${CIRCUITS:-withdraw:WithdrawVerifier transaction:TransactionVerifier multiasset:MultiAssetVerifier}; do
+  build_circuit "${spec%%:*}" "${spec##*:}"
+done
 
 echo "==> pinning artifacts + verifiers in sdk/artifacts/MANIFEST.json"
 node scripts/manifest.js
 
-echo "==> ZK setup complete for both circuits. Commit sdk/artifacts AND contracts/src/verifiers together."
+echo "==> ZK setup complete. Commit sdk/artifacts AND contracts/src/verifiers together."
