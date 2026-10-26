@@ -1,5 +1,48 @@
 # Umbra private swaps: testnet design and venue check
 
+## Status, 2026-10-26: private swaps are built (not yet deployed)
+
+A swap no longer needs the trader's wallet. The **multi-asset private pool**
+([`UmbraMultiAssetPool.sol`](../contracts/src/UmbraMultiAssetPool.sol),
+[`multiasset.circom`](../circuits/multiasset.circom)) holds tPOT and pUSD in one tree, and a
+proof can mint a note of the other asset. The pool pays the trader's input only to the
+proof's named counterparty, and only if it delivers the bought amount in the same call.
+The relayer is that counterparty: in one `utility.batchAll` it buys on Portaldot's exchange,
+approves, and calls the pool. If the exchange can't fill at the quoted price, everything
+reverts and the trader's notes stay unspent.
+
+| | Hidden | Visible |
+| --- | --- | --- |
+| Private swap | who traded; the trader's balance and history | the relayer's exchange trade, including its size |
+| Private payment / withdrawal (relayed) | sender; for payments also recipient and amount | for withdrawals the amount and the 0x recipient |
+| Deposit | which notes it becomes | the depositor and amount |
+
+Trade amounts are still visible on the exchange. Hiding them needs the batched design
+below, with enough concurrent traders to form an anonymity set.
+
+Verified: 11 Foundry tests; real Groth16 proofs on Anvil for both swap directions,
+counterparty binding, tampered amounts and short delivery (`make e2e`); live read-only
+quotes from the relayer against the testnet exchange.
+
+### Going live
+
+1. **Fund and deploy.** The testnet deploy costs about 1,022 tPOT in storage deposit
+   (271 for the verifier, 750 for the pool; `sdk/test/multiasset_deploy_live.ts`). Open
+   `/deploy.html` on the app and sign the two steps with the Portaldot Extension. Then add
+   the printed config to `deployments/testnet.json` and `frontend/src/config/deployment.json`
+   as `contracts.multiAssetPool`.
+2. **Run the relayer.** Build it with `docker build -f relayer.Dockerfile .` and set
+   `RELAYER_SEED` to a new native account's secret, in the host's secret settings only.
+   Fund that account with tPOT for fees and swap float, plus some pUSD for pUSD-to-tPOT
+   swaps. Set `RELAYER_CORS_ORIGIN` to the app's URL. `PRIVATE_KEY`, an EVM account, is
+   only needed to relay the older single-asset pool and the fixed pools.
+3. **Point the app at it.** Build the frontend with `VITE_RELAYER_URL=<relayer URL>`.
+
+Every private transaction stores two nullifiers, which costs about 7.7 tPOT on this
+runtime. The default relayer fee is therefore 9 tPOT, or its pUSD equivalent
+(`RELAYER_FEE_SHIELDED`). An operator can set it lower and cover the difference.
+
+
 Status: fixed-denomination peer-to-peer prototype implemented locally; DEX-backed variable-amount swap remains a design, 2026-10-25. The observed liquidity fallback is tPOT/pUSDT, correctly labeled pUSDT. Do not offer the **private batch swap** below or accept funds for it until the gates below are met.
 
 Update 2026-10-26: the app now has a live **public** swap of tPOT ↔ pUSD #7777 on Portaldot's native `pallet-asset-conversion`, which does hold a Native/pUSD pool (about 153.7 tPOT / 146.4 pUSD). The venue check below only searched the EVM V2 factory. The native swap can be funded from or delivered into the private balance in one atomic extrinsic, but it does not hide the trade amount. See [`FINANCE.md`](FINANCE.md).
