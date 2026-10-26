@@ -1,8 +1,9 @@
 # Umbra — Confidential POT & Portaldot-Asset Payments on Portaldot V3
 
-> Private, unlinkable native-token payments for Portaldot V3 — with the heavy
-> zero-knowledge verification offloaded to Portaldot's **WASM** VM while assets stay in
-> the **EVM** VM. One chain, two VMs, each doing the job it is best at.
+> Private payments, requests and swaps for Portaldot V3. Assets and zero-knowledge pools live
+> in the **EVM**; the same Groth16 proofs can also be verified in Portaldot's **WASM** VM; and
+> Portaldot's native pallets (accounts, assets, DEX) are composed with both in single
+> transactions. One chain, two VMs, plus the runtime itself.
 
 **Portaldot Hacker House 2026 · Track: Ecosystem DApps (+ Modular Cloud & Middleware)**
 
@@ -10,20 +11,31 @@
 
 ## Why this can only be built well on Portaldot V3
 
-A Groth16 proof verification is a bn254 pairing check — hundreds of thousands of gas on
-an EVM-only chain. Portaldot V3 is one of the few chains that runs **two VMs on the same
-chain**: EVM (`pallet-revive` / PolkaVM) *and* WASM (`pallet-contracts`). Umbra treats the
-WASM VM as a **ZK coprocessor**:
+Portaldot V3 runs **two VMs on one chain** — EVM (`pallet-revive`) *and* WASM
+(`pallet-contracts`) — next to native runtime pallets. Umbra uses all three:
 
-- **EVM layer** (`UmbraPool.sol`) holds the shielded tPOT, the Merkle tree of note
-  commitments, and the spent-nullifier set. Familiar, MetaMask-native.
-- **WASM layer** (`umbra_coprocessor`, ink! + arkworks) runs the pairing check cheaply,
-  with no EVM gas-loop ceiling and real Rust crypto libraries.
-- The pool consumes the result through a single `IVerifier` interface, so it does not
-  care which VM verified the proof — that indifference *is* the architecture.
+- **EVM layer** (`UmbraPool.sol`, `UmbraShieldedPool.sol`) holds shielded tPOT and pUSD, the
+  Merkle trees of note commitments and the spent-nullifier sets, and verifies Groth16 proofs
+  with Portaldot's BN254 precompiles.
+- **WASM layer** (`umbra_coprocessor`, ink! + arkworks) verifies the *same* proofs,
+  byte-for-byte, as a second, independent verifier in Rust. Pools consume verification
+  through one `IVerifier` interface, so a pool can be wired to either VM.
+- **Native runtime**: a Portaldot `5…` account drives the EVM contracts directly through
+  `revive.call`; pUSD is a `pallet-assets` token reached through its ERC-20 precompile; and
+  swaps run on `pallet-asset-conversion`. A swap *from your private balance* is one
+  `utility.batchAll` that withdraws from the EVM pool and trades on the native DEX — atomic,
+  under one signature.
 
-This "right VM for the right job" split is the answer to the question every judge asks:
-**why does this need Portaldot?** Most submissions are EVM-only and can't answer it.
+**Measured, not assumed** (live testnet dry-runs, same real proof): the EVM verifier uses
+about 0.035 s of block weight, the WASM verifier about 0.3 s. BN254 has a native EVM
+precompile on Portaldot, so pools verify on the EVM by default. The WASM verifier earns its
+place by independence and flexibility: it needs no precompile, so it is the path for proof
+systems and curves the EVM cannot verify natively, and its verifying key can be rotated after
+a ceremony. The WASM path is built and dry-run on testnet; deploying it needs about
+4,992 tPOT of storage deposit. Details: [`docs/CROSS_VM.md`](docs/CROSS_VM.md).
+
+That composition — EVM contracts, a WASM verifier and native pallets in one app — is the
+answer to **why does this need Portaldot?**
 
 ## What it does
 
@@ -134,11 +146,14 @@ docs/          architecture, cross-VM, security, mainnet, demo script, schedule
 
 ## How this maps to the judging criteria
 
-- **Innovation (30%)** — WASM-as-ZK-coprocessor for an EVM asset layer is a novel,
-  chain-native pattern; viewing keys turn a mixer into a compliance-capable layer.
-- **Technical feasibility (30%)** — real circuit, real trusted setup, real on-chain proof
-  verification on-chain *and* in WASM, 31 + 7 tests, a 25-check E2E on the real deploy
-  pipeline, and live-testnet preflight.
+- **Innovation (30%)** — one app composes EVM contracts, a WASM verifier and native
+  pallets: private payments with encrypted notes that settle payment requests, and swaps
+  that draw from or deliver into a private balance atomically on Portaldot's native DEX.
+  Viewing keys turn a mixer into a compliance-capable layer.
+- **Technical feasibility (30%)** — real circuits and Groth16 proofs verified on-chain; the
+  same proofs verified by the WASM verifier (tested natively and dry-run on testnet);
+  64 contract + 7 WASM tests, a 30-check E2E on the real deploy pipeline, live-testnet
+  preflight, and read-only live SDK tests for payments, swaps and the cross-VM path.
 - **Ecosystem contribution (20%)** — ships a reusable privacy primitive **and** a drop-in
   ZK-coprocessor pattern + SDK other Portaldot dApps can adopt (private DEX, DAO voting,
   payroll — see `docs/ARCHITECTURE.md` §Roadmap).

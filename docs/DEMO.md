@@ -37,11 +37,12 @@ POT payments private, and it does it using the one thing unique to Portaldot V3:
   Portaldot ecosystem — and the ZK-coprocessor pattern any V3 dApp can reuse."
 
 ## Judge one-liners (keep in your back pocket)
-- *Feasibility*: "Real circuits, 31 contract + 7 WASM tests, a 25-check end-to-end run on the
+- *Feasibility*: "Real circuits, 64 contract + 7 WASM tests, a 30-check end-to-end run on the
   real deploy pipeline, audited with every finding fixed — and the on-chain verifier
   accepts a genuinely-generated proof — not a mock."
-- *Innovation*: "WASM-as-ZK-coprocessor for an EVM asset layer is new, and only natural on
-  a dual-VM chain."
+- *Innovation*: "One app composes EVM contracts, a WASM verifier and Portaldot's native DEX —
+  a swap from your private balance is one atomic transaction. We measured both VMs: the EVM
+  precompile is cheaper for BN254, so WASM is our independent, precompile-free verifier."
 - *Ecosystem*: "It ships as an SDK + pattern — private DEX, DAO voting, payroll all drop
   onto the same engine."
 - *Business*: "Confidential payments with selective disclosure is where Aztec and
