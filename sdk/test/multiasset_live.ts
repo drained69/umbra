@@ -14,10 +14,11 @@ const dep = JSON.parse(readFileSync(join(ROOT, "deployments", "testnet.json"), "
 const MA = dep.contracts.multiAssetPool;
 const ART = { wasm: join(ROOT, "sdk/artifacts/multiasset.wasm"), zkey: join(ROOT, "sdk/artifacts/multiasset_final.zkey") };
 let n = 0;
+const t0 = Date.now();
 const check = (c: boolean, m: string) => {
   if (!c) throw new Error("FAILED: " + m);
   n++;
-  console.log("  ✔ " + m);
+  console.log(`  ✔ ${m} (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 };
 
 let apiP: Promise<ApiPromise> | null = null;
@@ -43,3 +44,4 @@ try {
   if (apiP) await (await apiP).disconnect();
 }
 console.log(`\n${n} checks passed`);
+process.exit(0); // snarkjs worker threads keep node alive
