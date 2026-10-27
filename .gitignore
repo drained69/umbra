@@ -1,6 +1,9 @@
 # node
 node_modules/
 dist/
+coverage/
+.nyc_output/
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
@@ -30,7 +33,21 @@ frontend/public/zk/
 
 # misc
 .DS_Store
+.idea/
+.vscode/
+.cache/
+*.swp
+*~
 *.log
+
+# local Python tooling used for release assets and documentation
+__pycache__/
+*.py[cod]
+.venv/
+
+# local scratch files; submission assets, proving keys, and source media stay tracked
+/tmp/
+/temp/
 
 # local E2E deployment output
 deployments/local.json

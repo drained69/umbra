@@ -1,48 +1,63 @@
 # Umbra
 
-**A zero-knowledge privacy layer for payments, requests and swaps on Portaldot V3.**
+**A testnet zero-knowledge privacy layer for payments, requests and swaps on Portaldot V3.**
 
-Umbra gives Portaldot users a private balance in tPOT and pUSD. From it they can pay anyone, request and split payments, swap between assets and withdraw to any address, without their wallet appearing on chain. Proofs are generated in the browser and verified on chain; a relayer submits private transactions, so the user's wallet signs only the initial deposit.
+Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool. Users can deposit tPOT or pUSD, pay private addresses, request and split payments, swap assets within their private balance, and withdraw. The browser generates zero-knowledge proofs that Portaldot verifies on chain. By default, the relayer submits private spends without a wallet signature; **deposits still reveal the depositor, asset and amount, while withdrawals reveal the destination and amount**. See the [privacy model](#privacy-model) before using it.
 
 | | |
 |---|---|
-| **Live app** | https://umbrav1.up.railway.app |
+| **Live app** | [umbrav1.up.railway.app](https://umbrav1.up.railway.app/) |
+| **Demo** | [Two-minute video](https://www.youtube.com/watch?v=hMTj8YFXGWM) · [Pitch deck](submission/dorahacks/pitch-deck/Umbra-Pitch-Deck.pdf) |
 | **Network** | Portaldot V3 testnet (EVM chain ID `420420777`) |
-| **Event** | Portaldot Hacker House 2026 · Ecosystem DApps (+ Modular Cloud & Middleware) |
-| **Status** | Testnet beta. Test tokens only. Not independently audited. |
+| **Event** | Portaldot Hacker House 2026 · Ecosystem DApps |
+| **Status** | Testnet beta with valueless test assets; internally reviewed, not independently audited |
 
 ---
 
 ## Contents
 
-1. [Features](#features)
-2. [Privacy model](#privacy-model)
-3. [How it works](#how-it-works)
-4. [Why Portaldot V3](#why-portaldot-v3)
-5. [Using the app](#using-the-app)
-6. [Live deployment](#live-deployment)
-7. [Development](#development)
-8. [Running the relayer](#running-the-relayer)
-9. [Testing and verification](#testing-and-verification)
-10. [Costs and units](#costs-and-units)
-11. [Security and limitations](#security-and-limitations)
-12. [Roadmap](#roadmap)
-13. [Repository layout](#repository-layout)
-14. [Judging criteria](#judging-criteria)
-15. [License](#license)
+1. [What is live](#what-is-live)
+2. [Features](#features)
+3. [Privacy model](#privacy-model)
+4. [How it works](#how-it-works)
+5. [Why Portaldot V3](#why-portaldot-v3)
+6. [Using the app](#using-the-app)
+7. [Live deployment](#live-deployment)
+8. [Development](#development)
+9. [Running the relayer](#running-the-relayer)
+10. [Testing and verification](#testing-and-verification)
+11. [Costs and units](#costs-and-units)
+12. [Security and limitations](#security-and-limitations)
+13. [Roadmap](#roadmap)
+14. [Repository layout](#repository-layout)
+15. [Judging criteria](#judging-criteria)
+16. [License](#license)
 
 ---
+
+## What is live
+
+| Component | Current status |
+|---|---|
+| Multi-asset private pool and Groth16 verifier | Deployed on Portaldot V3 testnet; supports tPOT and pUSD |
+| Web app and relayer | Live on Railway; the app supports native Portaldot and EVM wallets |
+| Private swap | Executed on testnet in block 215,680 through one atomic native batch |
+| Fixed-size pools and first-version shielded pool | Deployed; earlier notes remain withdrawable |
+| WASM coprocessor | Built, tested and dry-run on testnet; **not deployed** |
+| Sepolia → Portaldot bridge | Operator-trusted prototype, locally tested; **not deployed as a live bridge** |
+
+The live app is a demonstration, not a production privacy guarantee. Contract addresses, test evidence and the limits of each component are documented below.
 
 ## Features
 
 **Private balance (tPOT and pUSD)**
-- One private balance holds both assets in a single shielded pool, so every user and every asset adds to the same anonymity set.
-- Deposit from any Portaldot wallet; send, swap and withdraw through the relayer.
+- One private account holds tPOT and pUSD notes in a shared shielded pool. Asset information and a small user population still limit the effective anonymity set.
+- Deposit from a connected native or EVM wallet; send, swap and withdraw through the relayer by default, or self-submit where supported.
 - One spend key, backed up once, restores the balance in any browser. The key can be remembered locally, encrypted with a passcode (PBKDF2-SHA256, AES-256-GCM).
 
 **Private payments**
-- Pay any private address (`umbra-addr-…`) in tPOT or pUSD. The recipient, amount and an optional note are encrypted; only the recipient can read them.
-- Paid from the private balance, the payment is submitted by the relayer, so the sender is hidden too.
+- Pay a private address (`umbra-addr-…`) in tPOT or pUSD. The recipient can decrypt the received amount and optional note.
+- For a relayed payment, the sender's wallet address is not included in the spend transaction. Timing and network metadata can still weaken privacy.
 - Payments to ordinary `5…` or `0x` addresses are also supported, publicly.
 
 **Requests and bill splitting**
@@ -64,7 +79,7 @@ Umbra gives Portaldot users a private balance in tPOT and pUSD. From it they can
 **Product quality**
 - Works with the Portaldot Extension (native `5…` accounts) or EVM wallets.
 - Privacy meter showing how much cover the pool currently gives, with warnings when it is low.
-- Self-hosted fonts and no third-party requests; responsive layout with light and dark themes.
+- Self-hosted fonts, no third-party analytics or font CDN, and a responsive light and dark interface. The app does contact Portaldot RPC endpoints and the Umbra relayer.
 
 ## Privacy model
 
@@ -73,12 +88,13 @@ What each action reveals on chain:
 | Action | Hidden | Visible on chain |
 |---|---|---|
 | Deposit into the private balance | Which notes the deposit becomes | Depositor's account, asset and amount |
-| Private payment (relayed) | Sender, recipient, amount, note | That a private transaction happened; the relayer |
+| Private payment (relayed) | Wallet address, recipient, amount, note inside the pool | That a private transaction happened; the relayer and its fee |
+| Private payment (self-submitted) | Recipient, amount and note inside the pool | The user's wallet as transaction submitter |
 | Private swap (relayed) | Who traded; their balance and history | The relayer's trade on the exchange, including its size |
 | Withdrawal (relayed) | Which deposit the funds came from | Amount and the receiving address; the relayer |
-| Request link | Everything, until it is paid | Nothing (the link is never published) |
+| Request link | No on-chain request record until payment | Nothing; anyone given the off-chain link can see its request details |
 
-Privacy is only as strong as the crowd: if few people use the pool, timing and amounts can link activity. The app shows this with a privacy meter. Hiding swap amounts requires batching many traders together; that design is in [`docs/PRIVATE_SWAPS.md`](docs/PRIVATE_SWAPS.md).
+Privacy is only as strong as the crowd: with few users, timing and amounts can link activity. The relayer may see the submitter's IP address and the timing of their request. The app shows pool activity with a privacy meter. Hiding individual swap sizes would require batching traders together; that design is in [`docs/PRIVATE_SWAPS.md`](docs/PRIVATE_SWAPS.md).
 
 ## How it works
 
@@ -106,7 +122,7 @@ Further detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/FINANCE.m
 
 ## Why Portaldot V3
 
-Portaldot V3 runs two virtual machines on one chain, EVM (`pallet-revive`) and WASM (`pallet-contracts`), next to native runtime pallets. Umbra composes all of them:
+Portaldot V3 runs two virtual machines on one chain, EVM (`pallet-revive`) and WASM (`pallet-contracts`), next to native runtime pallets. Umbra's deployed flow combines EVM contracts with native pallets; a WASM verifier is tested separately:
 
 - **EVM:** the shielded pools, Merkle trees and Groth16 verifiers, using Portaldot's BN254 precompiles.
 - **Native runtime:** Portaldot `5…` accounts call the EVM contracts directly through `revive.call`; pUSD is a `pallet-assets` token reached through its ERC-20 precompile; swaps run on `pallet-asset-conversion`. A private swap batches an exchange trade, a token approval and a pool call into one atomic extrinsic.
@@ -114,12 +130,12 @@ Portaldot V3 runs two virtual machines on one chain, EVM (`pallet-revive`) and W
 
 ## Using the app
 
-You need the Portaldot Extension with some testnet tPOT.
+You need a supported Portaldot Extension account or an EVM wallet connected to Portaldot V3 testnet, funded with testnet tPOT for deposits and fees. A token deposit also needs the corresponding pUSD balance.
 
 1. **Connect.** Open the app and connect your Portaldot account.
 2. **Create a private account.** Go to **Privacy → Private balance**, choose a passcode and create the account. Save the spend key it shows (`umbra-sk-…`); it is the only way to recover the balance.
-3. **Deposit.** Deposit tPOT (or pUSD) into the private balance. This is the only step your wallet signs.
-4. **Pay privately.** Under **Pay → Send**, paste a private address. The relayer submits the payment; your wallet does not sign.
+3. **Deposit.** Deposit tPOT or pUSD into the private balance. Your wallet signs this public entry transaction.
+4. **Pay privately.** Under **Pay → Send**, paste a private address. With the default relayed route, your wallet does not sign the spend. Self-submission is an explicit alternative that reveals your wallet as the submitter.
 5. **Request money.** Under **Pay → Request**, create a link or QR code for tPOT or pUSD. Track it under **My requests**; private payments mark it paid automatically.
 6. **Swap privately.** Under **Swap → Private swap**, sell tPOT for pUSD (or the reverse). You receive exactly the quoted amount as a new private note.
 7. **Withdraw.** Under **Privacy → Private balance → Withdraw**, send funds to any address, ideally a fresh one.
@@ -170,11 +186,15 @@ cd sdk && npx --yes tsx@4.19.1 test/multiasset_live.ts
 **Prerequisites:** Node.js 20+, [Foundry](https://book.getfoundry.sh/), and for circuit work [circom](https://docs.circom.io/) 2.1. For the WASM coprocessor: Rust 1.86 and `cargo-contract` 5.
 
 ```bash
+git clone https://github.com/drained69/umbra.git
+cd umbra
 make install          # install every package (forge-std pinned, npm ci)
 make check            # contract tests, artifact pins, SDK typecheck, frontend build
 make e2e              # full system on a throwaway local chain (Anvil)
 make frontend         # run the app at http://localhost:5173
 ```
+
+`make check` runs entirely against local source and pinned artifacts. If Foundry fails while discovering macOS system proxy settings, run `FOUNDRY_OFFLINE=true make check`; this still executes the contract tests, artifact check, typecheck and frontend build.
 
 **Configuration.** The app reads [`frontend/src/config/deployment.json`](frontend/src/config/deployment.json). Build-time variables:
 
@@ -193,7 +213,7 @@ make frontend         # run the app at http://localhost:5173
 
 ## Running the relayer
 
-The relayer ([`relayer/`](relayer)) submits private transactions so users' wallets never appear on chain.
+The relayer ([`relayer/`](relayer)) submits private spends without a user-wallet signature. Deposits and optional self-submitted spends still expose the wallet on chain.
 
 | Endpoint | Purpose |
 |---|---|
@@ -216,7 +236,7 @@ docker build -f relayer.Dockerfile -t umbra-relayer .
 docker run -e NETWORK=testnet -e RELAYER_SEED="…" -e RELAYER_CORS_ORIGIN=https://umbrav1.up.railway.app -p 8080:8080 umbra-relayer
 ```
 
-Fund the relayer account with tPOT for fees and swap float, and with some pUSD to fill pUSD → tPOT swaps. Keep `RELAYER_SEED` in the host's secret settings only. The relayer's trust is liveness-only: it cannot redirect or keep user funds, and users can always submit transactions themselves.
+Fund the relayer account with tPOT for fees and swap float, and with some pUSD to fill pUSD → tPOT swaps. Keep `RELAYER_SEED` in the host's secret settings only. Proof-bound recipient and fee terms prevent the relayer from redirecting funds or increasing its fee after a proof is made; it can still censor or delay transactions, observe network metadata, and set swap quotes. Users can self-submit supported spends at the cost of exposing their wallet as the submitter.
 
 ## Testing and verification
 
@@ -243,6 +263,7 @@ These run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the li
 - **Not independently audited.** The code has had two internal review passes ([`AUDIT_REPORT.md`](AUDIT_REPORT.md)), with findings fixed and covered by regression tests. Do not use it with real funds.
 - **Trusted setup.** The proving keys come from a single-contributor setup, which is suitable for a demo only. Production needs a multi-party ceremony.
 - **Relayer.** It can delay or refuse service, but cannot redirect funds or raise its fee. Users can always submit transactions themselves, at the cost of revealing their account.
+- **Network privacy.** The relayer and RPC providers can observe IP addresses, timing and request metadata. Umbra does not hide those network-layer signals.
 - **Anonymity set.** Privacy depends on how many people use the pool. Timing, amounts and a small crowd can link activity.
 - **Swap amounts** are visible on the exchange, though not linked to the trader.
 - **Client storage.** The spend key and request history live in the browser; losing the spend key without a backup loses the balance.
@@ -254,7 +275,7 @@ Threat model and trust assumptions: [`docs/SECURITY.md`](docs/SECURITY.md).
 - **Batched private swaps** that hide individual amounts by netting many traders' orders ([`docs/PRIVATE_SWAPS.md`](docs/PRIVATE_SWAPS.md)).
 - **Multi-party trusted setup** and an independent audit before any real-funds deployment.
 - **WASM verifier deployment** on testnet ([`docs/CROSS_VM.md`](docs/CROSS_VM.md)).
-- **Cross-chain transfers** between Ethereum Sepolia and Portaldot; an operator-trusted prototype is implemented and locally tested ([`docs/BRIDGE_PROTOTYPE.md`](docs/BRIDGE_PROTOTYPE.md), [`docs/PRIVACY_LAYER.md`](docs/PRIVACY_LAYER.md)).
+- **Cross-chain transfers:** the current Sepolia → Portaldot route is a one-way, operator-trusted prototype, implemented and locally tested but not live. A reverse route and independent security review are future work ([`docs/BRIDGE_PROTOTYPE.md`](docs/BRIDGE_PROTOTYPE.md), [`docs/PRIVACY_LAYER.md`](docs/PRIVACY_LAYER.md)).
 - **Mainnet:** Portaldot V3 Live runs the same EVM-capable runtime; see [`docs/MAINNET.md`](docs/MAINNET.md) for the prerequisites.
 
 ## Repository layout
@@ -274,9 +295,9 @@ docs/         Architecture, finance, private swaps, cross-VM, security, mainnet,
 
 ## Judging criteria
 
-- **Innovation:** a single app composes EVM contracts, native pallets and a WASM verifier. Private payments settle requests through encrypted notes; private swaps settle against Portaldot's native exchange atomically, with a relayer as counterparty, so the trader never appears on chain. Viewing keys add selective disclosure.
+- **Innovation:** the deployed app combines EVM contracts and native pallets; a separately tested WASM verifier demonstrates cross-VM compatibility. Private payments settle requests through encrypted notes, while private swaps settle atomically against Portaldot's native exchange through a relayer. Viewing keys add selective disclosure.
 - **Technical feasibility:** real circuits and Groth16 proofs verified on chain; private swaps verified live on testnet; 75 contract tests, 7 WASM tests, 30 end-to-end and 23 relayer checks on a real deploy pipeline, plus live read-only suites.
-- **Ecosystem contribution:** a reusable privacy primitive, a multi-asset shielded pool any Portaldot asset can join, an SDK, and a relayer other Portaldot dApps can use.
+- **Ecosystem contribution:** a reusable privacy primitive, a multi-asset pool currently configured for tPOT and pUSD, an SDK, and a relayer that other Portaldot dApps can integrate with.
 - **Business potential:** private payments and swaps with selective disclosure, with relayer fees and swap spreads as a built-in revenue model.
 
 ## License
