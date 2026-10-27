@@ -23,7 +23,8 @@ import PrivateAccountCard from "./PrivateAccountCard";
 import QrCode from "./QrCode";
 import CopyButton from "./CopyButton";
 import { PrivatePoolMeter } from "./PrivacyMeter";
-import RelayRoute, { useSpendRoute } from "./RelayRoute";
+import RelayRoute from "./RelayRoute";
+import { privatelyPayable, usePrivateSpend } from "../lib/privatePay";
 
 export type PaySub = "send" | "request" | "split" | "requests";
 type Status = { t: "ok" | "err" | "info"; m: string; href?: string } | null;
@@ -80,14 +81,15 @@ function SendForm({ wallet }: { wallet: Wallet }) {
   const [selfSubmit, setSelfSubmit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
-  const route = useSpendRoute(wallet, selfSubmit);
-
   const isPrivate = validShielded(to);
-  const units = (() => { try { return toUnits(amount, 18); } catch { return 0n; } })();
-  const canUsePrivate = !!pa.owner && pa.spendable >= units + route.fee && units > 0n;
+  const units = (() => { try { return toUnits(amount, asset.decimals); } catch { return 0n; } })();
+  const spend = usePrivateSpend(asset, units, wallet, selfSubmit);
+  const route = spend.route;
+  const canUsePrivate = spend.canPay;
   const effectiveSource = isPrivate ? (source === "private" && canUsePrivate ? "private" : "wallet") : null;
+  const assetChoices = isPrivate ? ASSETS.filter(privatelyPayable) : ASSETS;
 
-  useEffect(() => { if (isPrivate) setAsset(TPOT); }, [isPrivate]);
+  useEffect(() => { if (isPrivate && !privatelyPayable(asset)) setAsset(TPOT); }, [isPrivate]);
 
   async function send() {
     setBusy(true);
@@ -95,8 +97,8 @@ function SendForm({ wallet }: { wallet: Wallet }) {
     try {
       const info = (m: string) => setStatus({ t: "info", m });
       if (isPrivate) {
-        const ref = await payPrivately(effectiveSource === "private" ? route.signer : wallet, pa.client, { source: effectiveSource!, owner: pa.owner, to: to.trim(), amount, memo: memo.trim() || undefined, pool: pa.tpotSource(units + route.fee) ?? undefined }, info);
-        logActivity({ kind: "send", title: `Sent ${amount} ${NATIVE} privately${toName ? ` to ${toName}` : ""}`, detail: memo || undefined, href: ref.href, private: true });
+        const ref = await payPrivately(effectiveSource === "private" ? route.signer : wallet, pa.client, { source: effectiveSource!, owner: pa.owner, to: to.trim(), amount, memo: memo.trim() || undefined, pool: spend.pool, asset }, info);
+        logActivity({ kind: "send", title: `Sent ${amount} ${asset.symbol} privately${toName ? ` to ${toName}` : ""}`, detail: memo || undefined, href: ref.href, private: true });
         setStatus({ t: "ok", m: `Sent privately · ${ref.label}`, href: ref.href });
         pa.refresh();
       } else {
@@ -126,19 +128,20 @@ function SendForm({ wallet }: { wallet: Wallet }) {
         <textarea id="send-to" className="short" value={to} onChange={(e) => { setTo(e.target.value); setToName(""); }} placeholder="Private address (umbra-addr-…), Portaldot 5… or 0x address" spellCheck={false} autoCapitalize="off" />
         <div className="two-col">
           <div><label htmlFor="send-amount">Amount</label><input id="send-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0" /></div>
-          <div><label htmlFor="send-asset">Asset</label><select id="send-asset" value={asset.symbol} disabled={isPrivate} onChange={(e) => setAsset(ASSETS.find((a) => a.symbol === e.target.value)!)}>{ASSETS.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></div>
+          <div><label htmlFor="send-asset">Asset</label><select id="send-asset" value={asset.symbol} disabled={assetChoices.length < 2} onChange={(e) => setAsset(ASSETS.find((a) => a.symbol === e.target.value)!)}>{assetChoices.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></div>
         </div>
         {isPrivate && <>
           <label htmlFor="send-memo">Note (encrypted, only they can read it)</label>
           <input id="send-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Dinner" maxLength={60} />
           <span className="toolbar-label" style={{ marginTop: 14 }}>PAY FROM</span>
           <div className="denoms">
-            <button className={`chip ${effectiveSource === "private" ? "active" : ""}`} disabled={!canUsePrivate} onClick={() => setSource("private")}>Private balance{pa.owner ? ` (${fmt(pa.spendable, 18, 4)})` : ""}</button>
+            <button className={`chip ${effectiveSource === "private" ? "active" : ""}`} disabled={!canUsePrivate} onClick={() => setSource("private")}>Private balance{pa.owner ? ` (${fmt(spend.balance, asset.decimals, 4)} ${asset.symbol})` : ""}</button>
             <button className={`chip ${effectiveSource === "wallet" ? "active" : ""}`} onClick={() => setSource("wallet")}>Wallet</button>
           </div>
         </>}
         <PrivacyNote mode={isPrivate ? (effectiveSource === "private" ? "private" : "wallet-to-private") : to.trim() ? "public" : null} />
-        {effectiveSource === "private" && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} />}
+        {effectiveSource === "private" && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} fee={spend.feeLabel} />}
+        {isPrivate && source === "private" && pa.owner && units > 0n && !canUsePrivate && <p className="hint">Your private balance can't cover {amount} {asset.symbol} plus the relayer fee, so this payment comes from your wallet.</p>}
         {isPrivate && <PrivatePoolMeter />}
         <button className="primary" onClick={send} disabled={busy || !to.trim() || units <= 0n || (effectiveSource === "private" && !route.ready)}>{busy ? "Working…" : isPrivate ? "Send privately" : "Send"}</button>
         <StatusLine s={status} />
@@ -203,7 +206,7 @@ function RequestForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequest
   const [alsoPublic, setAlsoPublic] = useState(false);
   const [created, setCreated] = useState<PaymentRequest | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const privateOk = asset.assetId === null && !!targets.shielded;
+  const privateOk = privatelyPayable(asset) && !!targets.shielded;
 
   function create() {
     setErr(null);
@@ -245,13 +248,13 @@ function RequestForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequest
           <div><label htmlFor="rq-name">Your name</label><input id="rq-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Alice" maxLength={40} /></div>
           <div><label htmlFor="rq-who">Who owes it (only you see this)</label><input id="rq-who" value={who} onChange={(e) => setWho(e.target.value)} placeholder="Bob" maxLength={40} /></div>
         </div>
-        <label className="row check-row"><input type="checkbox" checked={privately && privateOk} disabled={!privateOk} onChange={(e) => setPrivately(e.target.checked)} />Get paid privately to my private address{asset.assetId !== null ? ` (${NATIVE} only)` : !targets.shielded ? " (create a private account first)" : ""}</label>
+        <label className="row check-row"><input type="checkbox" checked={privately && privateOk} disabled={!privateOk} onChange={(e) => setPrivately(e.target.checked)} />Get paid privately to my private address{!privatelyPayable(asset) ? ` (not available for ${asset.symbol})` : !targets.shielded ? " (create a private account first)" : ""}</label>
         {privately && privateOk && <label className="check-row"><input type="checkbox" checked={alsoPublic} onChange={(e) => setAlsoPublic(e.target.checked)} />Also let them pay from a public wallet. This puts your public address in the link.</label>}
         <button className="primary" onClick={create} disabled={!amount.trim()}>Create request</button>
         {err && <div className="status err" role="alert">{err}</div>}
         {created && <><RequestShare r={created} /><button className="text-button" onClick={onShowRequests}>See all my requests →</button></>}
       </div>
-      {asset.assetId === null && !pa.owner ? <PrivateAccountCard /> : <HowRequestsWork />}
+      {privatelyPayable(asset) && !pa.owner ? <PrivateAccountCard /> : <HowRequestsWork />}
     </div>
   );
 }
@@ -261,9 +264,9 @@ function HowRequestsWork() {
     <div className="card">
       <h2>How requests work</h2>
       <ol className="steps plain">
-        <li><span className="dot">1</span>You share a link. It holds the amount, your note and where to pay. Nothing is published.</li>
-        <li><span className="dot">2</span>Your friend opens it and pays privately (encrypted note) or publicly.</li>
-        <li><span className="dot">3</span>Private payments carry the request id inside the encrypted note, so your app marks the request paid when it scans. Public payments return a receipt you can verify on chain.</li>
+        <li><span className="dot">1</span>You share a link or QR code. It contains the amount, your note and where to pay. Nothing is published on chain.</li>
+        <li><span className="dot">2</span>The payer opens it and pays privately, from their private balance or wallet, or publicly.</li>
+        <li><span className="dot">3</span>A private payment carries the request ID inside its encrypted note, so your app marks the request paid automatically. A public payment produces a receipt you can verify on chain.</li>
       </ol>
     </div>
   );
@@ -295,7 +298,7 @@ function SplitForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequests:
     try {
       if (!named.length) throw new Error("Add at least one person.");
       if (!shares.length) throw new Error("Enter the total.");
-      const usePrivate = asset.assetId === null && !!targets.shielded;
+      const usePrivate = privatelyPayable(asset) && !!targets.shielded;
       if (!usePrivate && !targets.account) throw new Error("Your public account is still loading.");
       const group = newRequestId();
       // with "include me", the first share (which absorbs rounding) is mine
@@ -348,7 +351,7 @@ function SplitForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequests:
           <button onClick={() => setPeople([...people, ""])} disabled={people.length >= 20}>Add person</button>
           <label className="row check-row" style={{ margin: 0 }}><input type="checkbox" checked={includeMe} onChange={(e) => setIncludeMe(e.target.checked)} />Include my share{includeMe && shares.length ? ` (${shares[0]} ${asset.symbol})` : ""}</label>
         </div>
-        {asset.assetId === null && targets.shielded && <label className="check-row"><input type="checkbox" checked={alsoPublic} onChange={(e) => setAlsoPublic(e.target.checked)} />Also let them pay from a public wallet. This puts your public address in each link.</label>}
+        {privatelyPayable(asset) && targets.shielded && <label className="check-row"><input type="checkbox" checked={alsoPublic} onChange={(e) => setAlsoPublic(e.target.checked)} />Also let them pay from a public wallet. This puts your public address in each link.</label>}
         <button className="primary" style={{ marginTop: 14 }} onClick={create} disabled={!named.length || !total.trim()}>Create {named.length || ""} request{named.length === 1 ? "" : "s"}</button>
         {err && <div className="status err" role="alert">{err}</div>}
       </div>
@@ -439,7 +442,6 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [selfSubmit, setSelfSubmit] = useState(false);
-  const route = useSpendRoute(wallet, selfSubmit);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [paid, setPaid] = useState(false);
   let req: PaymentRequest | null = null;
@@ -451,8 +453,10 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
     error = e.message;
   }
   const mine = req ? findMyRequest(req.id) : undefined;
-  const units = req ? toUnits(req.amount, 18) : 0n;
-  const fromPrivate = !!req?.to.shielded && !!pa.owner && pa.spendable >= units + route.fee;
+  const units = req ? toUnits(req.amount, req.asset.decimals) : 0n;
+  const spend = usePrivateSpend(req?.asset ?? TPOT, units, wallet, selfSubmit);
+  const route = spend.route;
+  const fromPrivate = !!req?.to.shielded && spend.canPay;
 
   async function pay(kind: "private" | "wallet" | "public") {
     if (!req || (!wallet && kind !== "private")) return;
@@ -465,7 +469,7 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
         ref = await payPublicly(wallet!, { asset: req.asset, to: req.to.account!, amount: req.amount, requestId: req.id }, info);
         if (ref.blockHash) setReceipt(`${appUrl()}?receipt=${encodeReceipt({ v: 1, id: req.id, chainId: req.chainId, blockHash: ref.blockHash })}`);
       } else {
-        ref = await payPrivately(kind === "private" ? route.signer : wallet, pa.client, { source: kind, owner: pa.owner, to: req.to.shielded!, amount: req.amount, memo: requestMemo(req.id, req.memo ?? ""), pool: pa.tpotSource(units + route.fee) ?? undefined }, info);
+        ref = await payPrivately(kind === "private" ? route.signer : wallet, pa.client, { source: kind, owner: pa.owner, to: req.to.shielded!, amount: req.amount, memo: requestMemo(req.id, req.memo ?? ""), pool: spend.pool, asset: req.asset }, info);
         pa.refresh();
       }
       logActivity({ kind: "pay", title: `Paid ${req.amount} ${req.asset.symbol} to ${req.name ?? "a request"}`, detail: req.memo, href: ref.href, private: kind !== "public" });
@@ -490,11 +494,15 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
             {req.to.shielded && <>
               <span className="toolbar-label" style={{ marginTop: 16 }}>PAY PRIVATELY</span>
               <div className="pay-options">
-                <button className="primary" disabled={busy || !fromPrivate || !route.ready} onClick={() => pay("private")}>From my private balance{pa.owner ? ` (${fmt(pa.spendable, 18, 4)} ${NATIVE})` : ""}</button>
+                <button className="primary" disabled={busy || !fromPrivate || !route.ready} onClick={() => pay("private")}>From my private balance{pa.owner ? ` (${fmt(spend.balance, req.asset.decimals, 4)} ${req.asset.symbol})` : ""}</button>
                 {wallet && <button disabled={busy} onClick={() => pay("wallet")}>From my wallet</button>}
               </div>
-              <p className="privacy-note private">{fromPrivate ? "From your private balance, nobody can see who paid whom or how much. No wallet connection needed." : "From your wallet, the recipient stays hidden but your wallet and the amount are visible as a deposit."}</p>
-              {fromPrivate && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} />}
+              <p className="privacy-note private">{fromPrivate
+                ? "From your private balance, nobody can see who paid whom or how much. No wallet connection needed."
+                : wallet
+                  ? "From your wallet, the recipient stays hidden but your wallet and the amount are visible as a deposit."
+                  : `To pay privately, unlock a private account holding at least ${req.amount} ${req.asset.symbol} plus the relayer fee, or connect a wallet.`}</p>
+              {fromPrivate && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} fee={spend.feeLabel} />}
               <PrivatePoolMeter />
             </>}
             {!wallet && <button className={req.to.shielded ? "" : "primary"} style={{ marginTop: 16 }} onClick={onConnect}>Connect Portaldot to pay from a wallet</button>}

@@ -12,9 +12,9 @@ import {
   Keypair,
 } from "@umbra/sdk";
 import { blockLink, getApi, short } from "./chain";
-import { NATIVE_PLANCK_DECIMALS } from "./finance";
+import { NATIVE_PLANCK_DECIMALS, TPOT } from "./finance";
 import { spendPrivately, submitShielded, type TxRef } from "./shielded";
-import { MA_NATIVE, maClient, proveMulti, spendMulti, submitMultiWithWallet } from "./multi";
+import { MA_NATIVE, maClient, maIdFor, proveMulti, spendMulti, submitMultiWithWallet } from "./multi";
 import type { Wallet } from "./wallet";
 
 /**
@@ -26,14 +26,19 @@ import type { Wallet } from "./wallet";
 export async function payPrivately(
   signer: Wallet | null,
   client: UmbraShieldedClient,
-  p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: string; memo?: string; pool?: "multi" | "legacy" },
+  p: { source: "private" | "wallet"; owner: Keypair | null; to: string; amount: string; memo?: string; pool?: "multi" | "legacy"; asset?: RequestAsset },
   onStatus: (m: string) => void
 ): Promise<TxRef> {
-  const base = { owner: p.owner, to: p.to, amount: toUnits(p.amount, 18), memo: p.memo };
+  const asset = p.asset ?? TPOT;
+  const id = maIdFor(asset);
+  if (id === null) throw new Error(`${asset.symbol} can't be paid privately on this network.`);
+  const base = { owner: p.owner, to: p.to, amount: toUnits(p.amount, asset.decimals), memo: p.memo };
+  // tokens live only in the multi-asset pool; tPOT may be in either pool
+  const multi = id !== MA_NATIVE || p.pool === "multi";
   if (p.source === "private") {
-    if (p.pool === "multi") {
+    if (multi) {
       const owner = p.owner!;
-      return spendMulti(MA_NATIVE, (relay) => maClient!.planPayment({ owner, to: p.to, asset: MA_NATIVE, amount: base.amount, memo: p.memo, relay }), onStatus, { selfSubmit: signer });
+      return spendMulti(id, (relay) => maClient!.planPayment({ owner, to: p.to, asset: id, amount: base.amount, memo: p.memo, relay }), onStatus, { selfSubmit: signer });
     }
     return spendPrivately(client, (relay) => client.planPayment({ ...base, source: "private", relay }), onStatus, { selfSubmit: signer });
   }
@@ -41,7 +46,7 @@ export async function payPrivately(
   if (maClient) {
     // new deposits go to the multi-asset pool once it exists
     onStatus("Generating a zero-knowledge proof in your browser…");
-    const prepared = await proveMulti(maClient.planDeposit(p.owner ?? new Keypair(), MA_NATIVE, base.amount, p.to, p.memo));
+    const prepared = await proveMulti(maClient.planDeposit(p.owner ?? new Keypair(), id, base.amount, p.to, p.memo));
     return submitMultiWithWallet(signer, prepared, onStatus);
   }
   return submitShielded(signer, client, await client.planPayment({ ...base, source: "wallet" }), onStatus);

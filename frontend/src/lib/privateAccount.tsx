@@ -4,7 +4,8 @@ import { DEPLOYMENT, SCAN_CHUNK, readProvider } from "./chain";
 import { findMyRequest, markRequestPaid } from "./finance";
 import { readStored, storeKey, writeStored } from "./store";
 import { SHIELDED_POOL } from "./shielded";
-import { MA_NATIVE, maClient } from "./multi";
+import { MA, MA_NATIVE, maClient, maIdFor } from "./multi";
+import { NATIVE } from "./chain";
 import { isSealed, passcodeProblem, seal, unseal, type SealedSecret } from "./vault";
 
 /**
@@ -21,6 +22,10 @@ interface LegacyPlain {
 export interface ReceivedNote {
   utxo: Utxo;
   spent: boolean;
+  /** unique across both pools (leaf indices are per pool) */
+  key: string;
+  symbol: string;
+  decimals: number;
   requestId?: string;
   text: string;
 }
@@ -107,15 +112,25 @@ export function PrivateAccountProvider({ children }: { children: ReactNode }) {
       setMaNotes(ma);
       const maTpot = UmbraMultiAssetClient.balances(ma).get(MA_NATIVE) ?? 0n;
       setBalance(unspent.reduce((s, u) => s + u.amount, 0n) + maTpot);
-      // tPOT notes from both pools (newest pool first); other assets show in maBalances
-      const received = [...all, ...ma.filter((n) => n.utxo.asset === MA_NATIVE)];
-      const hist = received.map((n) => ({ ...n, ...parseMemo(n.utxo.memo) })).reverse();
+      // notes from both pools, newest last before reversing (the multi-asset pool is newer)
+      const assetOf = (u: Utxo) => {
+        const a = u.asset === undefined ? null : MA?.assets.find((x) => BigInt(x.id) === u.asset);
+        return a ? { symbol: a.symbol, decimals: a.decimals } : { symbol: NATIVE, decimals: 18 };
+      };
+      const received = [
+        ...all.map((n) => ({ ...n, key: `s-${n.utxo.index}` })),
+        ...ma.map((n) => ({ ...n, key: `m-${n.utxo.index}` })),
+      ];
+      const hist = received.map((n) => ({ ...n, ...assetOf(n.utxo), ...parseMemo(n.utxo.memo) })).reverse();
       setHistory(hist);
-      // A private payment carries its request id in the encrypted memo: settle matching requests.
+      // A private payment carries its request id in the encrypted memo: settle matching requests
+      // when the note is in the requested asset and covers the requested amount.
       for (const h of hist) {
         if (!h.requestId) continue;
         const mine = findMyRequest(h.requestId);
-        if (mine?.status === "open" && h.utxo.amount >= toUnits(mine.request.amount, 18)) markRequestPaid(h.requestId, "private");
+        if (mine?.status !== "open") continue;
+        const want = maIdFor(mine.request.asset);
+        if (want !== null && (h.utxo.asset ?? MA_NATIVE) === want && h.utxo.amount >= toUnits(mine.request.amount, mine.request.asset.decimals)) markRequestPaid(h.requestId, "private");
       }
     } catch (e: any) {
       setError(`Private balance scan failed: ${e?.message ?? e}`);

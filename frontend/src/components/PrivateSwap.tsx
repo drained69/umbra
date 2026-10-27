@@ -105,6 +105,7 @@ export default function PrivateSwap() {
             <div><dt>Total from your private balance</dt><dd>{fmt(need, sellA.decimals, 4)} {sellA.symbol}</dd></div>
             <div><dt>Price impact</dt><dd className={impact > 3 ? "warn" : ""}>{impact.toFixed(2)}%</dd></div>
           </dl>}
+          {pa.owner && available === 0n && <p className="hint">Your private {sellA.symbol} balance is empty. Add funds under Privacy → Private balance → Deposit; it is the only step your wallet signs.</p>}
           {relayer.state === "down" && <div className="status err" role="alert">The relayer isn't reachable, so private swaps are unavailable. {relayer.error}</div>}
           {quoteErr && <div className="status err" role="alert">{quoteErr}</div>}
           {impact > 5 && <label className="row check-row"><input type="checkbox" checked={ackImpact} onChange={(e) => setAckImpact(e.target.checked)} />I accept a {impact.toFixed(1)}% price impact (this pool is small)</label>}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { readProvider } from "../lib/chain";
 import { SHIELDED_POOL } from "../lib/shielded";
+import { MA } from "../lib/multi";
 
 /**
  * How much cover a pool gives: privacy comes from blending in with other deposits.
@@ -36,7 +37,8 @@ export function usePoolSize(address: string | undefined, refreshKey: unknown = 0
  * be a zero-value filler), so transactions — notes / 2 — is the honest count.
  */
 export function PrivatePoolMeter({ refreshKey = 0 }: { refreshKey?: unknown }) {
-  const notes = usePoolSize(SHIELDED_POOL, refreshKey);
+  // new private activity happens in the multi-asset pool once it exists
+  const notes = usePoolSize(MA?.address ?? SHIELDED_POOL, refreshKey);
   const txs = notes === null ? null : Math.floor(notes / 2);
   return (
     <PrivacyMeter

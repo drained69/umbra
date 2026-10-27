@@ -80,7 +80,7 @@ export function validateRequest(r: PaymentRequest): PaymentRequest {
   if (toUnits(r.amount, r.asset.decimals) <= 0n) throw new Error("payment request amount must be positive");
   if (!r.to?.shielded && !r.to?.account) throw new Error("payment request has nowhere to pay");
   if (r.to.shielded) Keypair.publicFromAddress(r.to.shielded); // throws on a malformed address
-  if (r.to.shielded && r.asset.assetId !== null) throw new Error("private payments support the native token only");
+  // tokens are paid privately through the multi-asset pool; the app checks that the network has one
   if (r.memo && r.memo.length > MAX_TEXT) r.memo = r.memo.slice(0, MAX_TEXT);
   if (r.name && r.name.length > 40) r.name = r.name.slice(0, 40);
   return r;

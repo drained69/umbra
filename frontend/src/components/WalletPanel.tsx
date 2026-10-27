@@ -96,7 +96,7 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
           {received.length > 0 && <>
             <span className="toolbar-label" style={{ marginTop: 6 }}>Received privately</span>
             <ul className="list">
-              {received.map((h) => <li key={h.utxo.index}><span className="tag private">private</span><span className="grow">{h.text || "Payment"}{h.requestId ? " · request" : ""}</span><strong>+{fmt(h.utxo.amount, 18, 4)} {NATIVE}</strong></li>)}
+              {received.map((h) => <li key={h.key}><span className="tag private">private</span><span className="grow">{h.text || "Payment"}{h.requestId ? " · request" : ""}</span><strong>+{fmt(h.utxo.amount, h.decimals, 4)} {h.symbol}</strong></li>)}
             </ul>
           </>}
           <span className="toolbar-label" style={{ marginTop: 12 }}>Recent</span>

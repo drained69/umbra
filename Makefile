@@ -54,6 +54,7 @@ live:
 	cd sdk && npx --yes tsx@4.19.1 test/crossvm_live.ts
 	cd sdk && npx --yes tsx@4.19.1 test/payments_swap_live.ts
 	cd sdk && npx --yes tsx@4.19.1 test/native_logs_live.ts
+	cd sdk && npx --yes tsx@4.19.1 test/multiasset_live.ts
 
 estimate:
 	cd contracts && forge build

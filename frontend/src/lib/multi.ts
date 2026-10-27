@@ -13,6 +13,7 @@ import {
   type MultiAssetRelayerQuote,
   type PreparedMultiAsset,
   type RelayTerms,
+  type RequestAsset,
 } from "@umbra/sdk";
 import { DEPLOYMENT, RELAYER_URL, SCAN_CHUNK, blockLink, getApi, readProvider, short } from "./chain";
 import type { TxRef } from "./shielded";
@@ -31,6 +32,16 @@ export const MA_ARTIFACTS = { wasm: "/zk/multiasset.wasm", zkey: "/zk/multiasset
 export const MA_NATIVE = 0n;
 
 export const maClient = MA ? new UmbraMultiAssetClient(MA.address, readProvider, { deployBlock: DEPLOYMENT.deployBlock ?? 0, chunkSize: SCAN_CHUNK }) : null;
+
+/**
+ * Multi-asset pool id for a payment asset: tPOT is 0, a token is its position in the pool's
+ * asset table. null when the asset can't be held privately on this network.
+ */
+export function maIdFor(asset: RequestAsset): bigint | null {
+  if (asset.assetId === null) return 0n;
+  const a = MA?.assets.find((x) => x.assetId === asset.assetId);
+  return a ? BigInt(a.id) : null;
+}
 
 export function maAsset(id: bigint | number) {
   const a = MA?.assets.find((x) => x.id === Number(id));
