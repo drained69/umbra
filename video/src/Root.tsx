@@ -12,7 +12,7 @@ export const Root: React.FC = () => (
       fps={FPS}
       width={1920}
       height={1080}
-      defaultProps={{ orientation: "landscape" as const, withAudio: true }}
+      defaultProps={{ orientation: "landscape" as const, withAudio: true, voiceover: true }}
     />
     <Composition
       id="UmbraDemoPortrait"
@@ -21,7 +21,7 @@ export const Root: React.FC = () => (
       fps={FPS}
       width={1080}
       height={1920}
-      defaultProps={{ orientation: "portrait" as const, withAudio: true }}
+      defaultProps={{ orientation: "portrait" as const, withAudio: true, voiceover: false }}
     />
   </>
 );

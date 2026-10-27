@@ -36,6 +36,20 @@ same beat, so sound and picture cannot drift.
 | 8 | Result | 5 | 1:40.4–1:51.3 | 10.9 s |
 | — | Outro + CTA | 4 | 1:51.3–2:00.0 | 8.7 s |
 
+## Voiceover (YouTube cut)
+
+The landscape composition plays `soundtrack-vo.wav`, which adds narration over the same
+score, ducking the music about 9 dB under each line (interface SFX are never ducked). The
+portrait cut keeps the music-only `soundtrack.wav`.
+
+- Script and per-line timing: `src/voiceover.mjs`. Each line starts a set number of beats into
+  its section, or 0.3 s after the previous line if that one is still speaking; four long lines
+  are tightened 4–10 % with pitch-preserving `atempo`.
+- Voice: Higgsfield preset "Arthur" (`seed_audio`). The recorded clips are committed in
+  `voiceover/arthur/` because regenerating them costs credits.
+- `npm run audio` builds the stem (`make-voiceover.mjs`), both masters (`make-audio.mjs`)
+  and a YouTube caption file, `out/umbra-landscape-1920x1080.en.srt`.
+
 ## Example data (not real)
 
 All amounts, names, addresses, block hashes and links are placeholders:

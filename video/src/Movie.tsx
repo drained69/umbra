@@ -27,7 +27,8 @@ const SCENES: Record<string, React.FC<{ orientation: Orientation }>> = {
   outro: () => <Outro />,
 };
 
-export const Movie: React.FC<{ orientation: Orientation; withAudio?: boolean }> = ({ orientation, withAudio = true }) => {
+// `voiceover` picks the narrated master (YouTube cut); without it the music-only master plays.
+export const Movie: React.FC<{ orientation: Orientation; withAudio?: boolean; voiceover?: boolean }> = ({ orientation, withAudio = true, voiceover = false }) => {
   const timeline = sectionTimeline() as { id: string; startFrame: number; durationInFrames: number }[];
   return (
     <AbsoluteFill style={{ background: "#0c1210", fontFamily: '"DM Sans", system-ui, sans-serif', fontFeatureSettings: '"tnum" 1', WebkitFontSmoothing: "antialiased" }}>
@@ -42,7 +43,7 @@ export const Movie: React.FC<{ orientation: Orientation; withAudio?: boolean }> 
           );
         })}
       </Stage>
-      {withAudio && <Audio src={staticFile("audio/soundtrack.wav")} />}
+      {withAudio && <Audio src={staticFile(voiceover ? "audio/soundtrack-vo.wav" : "audio/soundtrack.wav")} />}
     </AbsoluteFill>
   );
 };

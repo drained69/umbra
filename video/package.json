@@ -2,9 +2,9 @@
   "name": "umbra-demo-video",
   "version": "1.0.0",
   "private": true,
-  "description": "Umbra 2-minute product demo — Remotion, code-generated soundtrack.",
+  "description": "Umbra 2-minute product demo \u2014 Remotion, code-generated soundtrack.",
   "scripts": {
-    "audio": "node scripts/make-audio.mjs",
+    "audio": "node scripts/make-voiceover.mjs && node scripts/make-audio.mjs",
     "studio": "remotion studio",
     "still": "remotion still",
     "render:landscape": "remotion render UmbraDemoLandscape out/umbra-landscape-1920x1080.mp4 --concurrency=6 --video-bitrate=12M --x264-preset=slow --audio-bitrate=320k",

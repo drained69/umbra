@@ -2,7 +2,10 @@
 // Calm, confident electronic at 110 BPM. Every section starts on a bar, and every SFX is
 // placed from the same cue table the scenes animate on (src/timing.mjs), so they never drift.
 //
-//   node scripts/make-audio.mjs  ->  public/audio/soundtrack.wav (44.1 kHz, 16-bit, stereo, 120 s)
+//   node scripts/make-audio.mjs  ->  public/audio/soundtrack.wav    (music + SFX; portrait cut)
+//                                    public/audio/soundtrack-vo.wav (+ narration, music ducked under it;
+//                                    YouTube cut) when scripts/make-voiceover.mjs has built the stem.
+// All files are 44.1 kHz, 16-bit, stereo, 120 s.
 import fs from "node:fs";
 import path from "node:path";
 import { SAMPLE_RATE as SR, SECONDS_PER_BEAT as SPB, TOTAL_FRAMES, FPS, SECTIONS, CUES, cueAbs } from "../src/timing.mjs";
@@ -13,8 +16,11 @@ const BAR = SPB * 4;
 const TOTAL_BARS = Math.round(DUR / BAR); // 55
 const TAU = Math.PI * 2;
 
-const L = new Float32Array(N);
+const L = new Float32Array(N); // music bus (ducks under narration)
 const R = new Float32Array(N);
+const sfxL = new Float32Array(N); // interface SFX bus (never ducked)
+const sfxR = new Float32Array(N);
+let bus = [L, R];
 const sendL = new Float32Array(N); // reverb send
 const sendR = new Float32Array(N);
 
@@ -33,8 +39,8 @@ function put(t0, len, fn, { gain = 1, pan = 0, rev = 0 } = {}) {
     const i = s0 + k;
     if (i < 0 || i >= N) continue;
     const v = fn(k / SR, k);
-    L[i] += v * gl;
-    R[i] += v * gr;
+    bus[0][i] += v * gl;
+    bus[1][i] += v * gr;
     if (rev) {
       sendL[i] += v * gl * rev;
       sendR[i] += v * gr * rev;
@@ -218,6 +224,7 @@ for (const s of sectionStartBars.slice(1)) {
 }
 
 // ---------------------------------------------------------------- interface SFX
+bus = [sfxL, sfxR];
 const at = (name) => cueAbs(name) / FPS; // seconds, from the shared cue table
 
 function click(t0) {
@@ -311,38 +318,94 @@ function reverb(input, offset) {
 const wetL = reverb(sendL, 0);
 const wetR = reverb(sendR, 23);
 
-let peak = 0;
-const drive = 1.25;
-for (let n = 0; n < N; n++) {
-  const t = n / SR;
-  const fade = Math.min(1, t / 0.04) * Math.min(1, (DUR - t) / 2.6);
-  L[n] = Math.tanh((L[n] + wetL[n] * 0.9) * drive) * fade;
-  R[n] = Math.tanh((R[n] + wetR[n] * 0.9) * drive) * fade;
-  peak = Math.max(peak, Math.abs(L[n]), Math.abs(R[n]));
-}
-const norm = 0.89 / peak; // -1 dBFS
+// ---------------------------------------------------------------- master + write
+const audioDir = path.join(path.dirname(new URL(import.meta.url).pathname), "../public/audio");
 
-// ---------------------------------------------------------------- write WAV
-const out = Buffer.alloc(44 + N * 4);
-out.write("RIFF", 0);
-out.writeUInt32LE(36 + N * 4, 4);
-out.write("WAVE", 8);
-out.write("fmt ", 12);
-out.writeUInt32LE(16, 16);
-out.writeUInt16LE(1, 20);
-out.writeUInt16LE(2, 22);
-out.writeUInt32LE(SR, 24);
-out.writeUInt32LE(SR * 4, 28);
-out.writeUInt16LE(4, 32);
-out.writeUInt16LE(16, 34);
-out.write("data", 36);
-out.writeUInt32LE(N * 4, 40);
-for (let n = 0; n < N; n++) {
-  out.writeInt16LE(Math.round(Math.max(-1, Math.min(1, L[n] * norm)) * 32767), 44 + n * 4);
-  out.writeInt16LE(Math.round(Math.max(-1, Math.min(1, R[n] * norm)) * 32767), 46 + n * 4);
+// Narration stem + its speech intervals (from scripts/make-voiceover.mjs), if built.
+function readWav16(file) {
+  const b = fs.readFileSync(file);
+  const n = (b.length - 44) / 4;
+  const l = new Float32Array(n), r = new Float32Array(n);
+  for (let k = 0; k < n; k++) { l[k] = b.readInt16LE(44 + k * 4) / 32767; r[k] = b.readInt16LE(46 + k * 4) / 32767; }
+  return [l, r];
 }
-const dest = path.join(path.dirname(new URL(import.meta.url).pathname), "../public/audio/soundtrack.wav");
-fs.writeFileSync(dest, out);
+const voPath = path.join(audioDir, "voiceover.wav");
+const vo = fs.existsSync(voPath) ? { pcm: readWav16(voPath), spans: JSON.parse(fs.readFileSync(path.join(audioDir, "voiceover.json"), "utf8")) } : null;
 
-console.log(`wrote ${dest}: ${DUR}s, ${TOTAL_BARS} bars @ ${60 / SPB} BPM, peak normalised to -1 dBFS`);
+// Music gain under narration: dips ~9 dB, easing in just before each line and out after it.
+function duckCurve(spans) {
+  const g = new Float32Array(N).fill(1);
+  const DEPTH = 0.36, PRE = 0.15, POST = 0.5;
+  for (let n = 0; n < N; n++) {
+    const t = n / SR;
+    let amt = 0;
+    for (const s of spans) {
+      if (t < s.start - PRE || t > s.end + POST) continue;
+      const a = t < s.start ? (t - (s.start - PRE)) / PRE : t > s.end ? 1 - (t - s.end) / POST : 1;
+      amt = Math.max(amt, Math.max(0, Math.min(1, a)));
+    }
+    g[n] = 1 - (1 - DEPTH) * amt;
+  }
+  return g;
+}
+
+function master(withVo) {
+  const duck = withVo ? duckCurve(vo.spans) : null;
+  const oL = new Float32Array(N), oR = new Float32Array(N);
+  let peak = 0;
+  let voE = 0, bedE = 0;
+  const drive = 1.25;
+  for (let n = 0; n < N; n++) {
+    const t = n / SR;
+    const musicFade = Math.min(1, t / 0.04) * Math.min(1, (DUR - t) / 2.6);
+    const d = duck ? duck[n] : 1;
+    let l = ((L[n] + wetL[n] * 0.9) * d) * musicFade + sfxL[n];
+    let r = ((R[n] + wetR[n] * 0.9) * d) * musicFade + sfxR[n];
+    l = Math.tanh(l * drive);
+    r = Math.tanh(r * drive);
+    if (withVo) {
+      const vl = vo.pcm[0][n] * 1.6, vr = vo.pcm[1][n] * 1.6;
+      if (duck[n] < 0.5) { voE += vl * vl + vr * vr; bedE += l * l + r * r; }
+      l += vl;
+      r += vr;
+    }
+    const tail = Math.min(1, (DUR - t) / 0.12);
+    oL[n] = l * tail;
+    oR[n] = r * tail;
+    peak = Math.max(peak, Math.abs(oL[n]), Math.abs(oR[n]));
+  }
+  if (withVo) console.log(`voice sits ${(10 * Math.log10(voE / bedE)).toFixed(1)} dB above the music+SFX bed while speaking`);
+  const norm = 0.89 / peak; // -1 dBFS
+  for (let n = 0; n < N; n++) { oL[n] *= norm; oR[n] *= norm; }
+  return [oL, oR];
+}
+
+function writeWav(file, [l, r]) {
+  const out = Buffer.alloc(44 + N * 4);
+  out.write("RIFF", 0);
+  out.writeUInt32LE(36 + N * 4, 4);
+  out.write("WAVE", 8);
+  out.write("fmt ", 12);
+  out.writeUInt32LE(16, 16);
+  out.writeUInt16LE(1, 20);
+  out.writeUInt16LE(2, 22);
+  out.writeUInt32LE(SR, 24);
+  out.writeUInt32LE(SR * 4, 28);
+  out.writeUInt16LE(4, 32);
+  out.writeUInt16LE(16, 34);
+  out.write("data", 36);
+  out.writeUInt32LE(N * 4, 40);
+  for (let n = 0; n < N; n++) {
+    out.writeInt16LE(Math.round(Math.max(-1, Math.min(1, l[n])) * 32767), 44 + n * 4);
+    out.writeInt16LE(Math.round(Math.max(-1, Math.min(1, r[n])) * 32767), 46 + n * 4);
+  }
+  fs.writeFileSync(file, out);
+  console.log(`wrote ${file}`);
+}
+
+writeWav(path.join(audioDir, "soundtrack.wav"), master(false));
+if (vo) writeWav(path.join(audioDir, "soundtrack-vo.wav"), master(true));
+else console.log("no voiceover stem (run scripts/make-voiceover.mjs) — skipped soundtrack-vo.wav");
+
+console.log(`${DUR}s, ${TOTAL_BARS} bars @ ${Math.round(60 / SPB)} BPM, each master peak-normalised to -1 dBFS`);
 for (const name of Object.keys(CUES)) console.log(`  cue ${name.padEnd(15)} frame ${String(cueAbs(name)).padStart(4)}  ${(cueAbs(name) / FPS).toFixed(3)}s`);
