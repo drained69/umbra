@@ -32,7 +32,26 @@
         }
       }
     },
-    "shieldedPool": "0x499298029680abB438bBABd39461805b8EA86d45"
+    "shieldedPool": "0x499298029680abB438bBABd39461805b8EA86d45",
+    "multiAssetPool": {
+      "address": "0x341bE1d79E763A1Bd68f0FFccb330Ae75Da499fc",
+      "verifier": "0x6124AC4b8eCE30665f8F01831916beb427BdB16c",
+      "assets": [
+        {
+          "id": 0,
+          "symbol": "tPOT",
+          "address": null,
+          "decimals": 18
+        },
+        {
+          "id": 1,
+          "symbol": "pUSD",
+          "address": "0x00001E6100000000000000000000000000010000",
+          "assetId": 7777,
+          "decimals": 6
+        }
+      ]
+    }
   },
   "deployedAt": "2026-10-24T16:31:43.612Z",
   "deployer": {
