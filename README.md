@@ -9,8 +9,11 @@ Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool
 | **Live app** | [umbrav1.up.railway.app](https://umbrav1.up.railway.app/) |
 | **Demo** | [Two-minute video](https://www.youtube.com/watch?v=hMTj8YFXGWM) · [Pitch deck](submission/dorahacks/pitch-deck/Umbra-Pitch-Deck.pdf) |
 | **Network** | Portaldot V3 testnet (EVM chain ID `420420777`) |
-| **Event** | Portaldot Hacker House 2026 · Ecosystem DApps |
 | **Status** | Testnet beta with valueless test assets; internally reviewed, not independently audited |
+
+<p align="center">
+  <img src="submission/dorahacks/images/08-private-swap-quote.png" alt="Umbra private swap: quote, relayer fee and price impact shown before confirming" width="860">
+</p>
 
 ---
 
@@ -22,7 +25,7 @@ Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool
 4. [How it works](#how-it-works)
 5. [Why Portaldot V3](#why-portaldot-v3)
 6. [Using the app](#using-the-app)
-7. [Live deployment](#live-deployment)
+7. [Deployed contracts](#deployed-contracts)
 8. [Development](#development)
 9. [Running the relayer](#running-the-relayer)
 10. [Testing and verification](#testing-and-verification)
@@ -30,8 +33,7 @@ Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool
 12. [Security and limitations](#security-and-limitations)
 13. [Roadmap](#roadmap)
 14. [Repository layout](#repository-layout)
-15. [Judging criteria](#judging-criteria)
-16. [License](#license)
+15. [License](#license)
 
 ---
 
@@ -142,9 +144,9 @@ You need a supported Portaldot Extension account or an EVM wallet connected to P
 
 The relayer charges a fee per private transaction, taken from the private balance (see [Costs](#costs-and-units)).
 
-## Live deployment
+## Deployed contracts
 
-Source of truth: [`deployments/testnet.json`](deployments/testnet.json). Contract addresses are intentionally not shown in the app.
+Every contract Umbra deploys on Portaldot V3 testnet is listed here, with its address and the transaction that created it. All ten have deployed code on chain. The source of truth is [`deployments/testnet.json`](deployments/testnet.json), which the app reads directly.
 
 | | |
 |---|---|
@@ -292,13 +294,6 @@ scripts/      Preflight, deploy, cost estimates, verification, e2e runner
 deployments/  Deployed addresses per network
 docs/         Architecture, finance, private swaps, cross-VM, security, mainnet, demo
 ```
-
-## Judging criteria
-
-- **Innovation:** the deployed app combines EVM contracts and native pallets; a separately tested WASM verifier demonstrates cross-VM compatibility. Private payments settle requests through encrypted notes, while private swaps settle atomically against Portaldot's native exchange through a relayer. Viewing keys add selective disclosure.
-- **Technical feasibility:** real circuits and Groth16 proofs verified on chain; private swaps verified live on testnet; 75 contract tests, 7 WASM tests, 30 end-to-end and 23 relayer checks on a real deploy pipeline, plus live read-only suites.
-- **Ecosystem contribution:** a reusable privacy primitive, a multi-asset pool currently configured for tPOT and pUSD, an SDK, and a relayer that other Portaldot dApps can integrate with.
-- **Business potential:** private payments and swaps with selective disclosure, with relayer fees and swap spreads as a built-in revenue model.
 
 ## License
 
