@@ -1,26 +1,15 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-/** A button that copies `value` and confirms it, so users know the copy worked. */
-export default function CopyButton({ value, children, className, label, style }: { value: string; children: ReactNode; className?: string; label?: string; style?: CSSProperties }) {
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-  useEffect(() => {
-    if (state === "idle") return;
-    const t = setTimeout(() => setState("idle"), 1800);
-    return () => clearTimeout(t);
-  }, [state]);
-
+/** Clipboard feedback without putting sensitive values in notifications or logs. */
+export default function CopyButton({ value, children, className = "", disabled = false, style, label }: { value: string; children: ReactNode; className?: string; disabled?: boolean; style?: CSSProperties; label?: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "error">("idle");
+  const timeout = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timeout.current), []);
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setState("copied");
-    } catch {
-      setState("failed"); // clipboard blocked (permissions or an insecure context)
-    }
+    clearTimeout(timeout.current);
+    try { await navigator.clipboard.writeText(value); setState("copied"); }
+    catch { setState("error"); }
+    timeout.current = setTimeout(() => setState("idle"), 3500);
   }
-
-  return (
-    <button type="button" className={className} style={style} onClick={copy} aria-label={label}>
-      <span aria-live="polite">{state === "copied" ? "Copied ✓" : state === "failed" ? "Copy blocked" : children}</span>
-    </button>
-  );
+  return <button type="button" className={className} style={style} aria-label={label} disabled={disabled} onClick={copy} aria-live="polite">{state === "copied" ? "Copied ✓" : state === "error" ? "Copy failed · retry" : children}</button>;
 }

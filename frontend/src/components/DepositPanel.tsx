@@ -34,7 +34,7 @@ export default function DepositPanel({ asset, denomLabel, denomWei, viewingKey, 
     setNote(createNote(denomWei));
     setBackupConfirmed(false);
     setRefs([]);
-    setStatus({ t: "info", m: "Note generated locally. Back it up — it is the ONLY way to withdraw." });
+    setStatus({ t: "info", m: "Note created in your browser. Back it up now: it is the only way to withdraw." });
   }
 
   async function run() {

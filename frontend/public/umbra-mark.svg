@@ -1,20 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Umbra">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#14523b"/>
-      <stop offset="1" stop-color="#0b2e21"/>
-    </linearGradient>
-    <linearGradient id="light" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#d9f2e4"/>
-      <stop offset="1" stop-color="#8fd6b1"/>
-    </linearGradient>
-    <mask id="crescent">
-      <rect width="64" height="64" fill="#fff"/>
-      <circle cx="38.5" cy="25.5" r="15.5" fill="#000"/>
-    </mask>
-  </defs>
-  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
-  <circle cx="32" cy="32" r="18" fill="url(#light)" mask="url(#crescent)"/>
-  <circle cx="32" cy="32" r="18" fill="none" stroke="#d9f2e4" stroke-opacity=".28" stroke-width="1.2"/>
-  <circle cx="45.5" cy="45" r="2.6" fill="#8fd6b1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect x="1" y="1" width="62" height="62" rx="20" fill="#163E31"/>
+  <path d="M18 19v19c0 8 6.3 14 14 14s14-6 14-14V19h-9v19a5 5 0 0 1-10 0V19z" fill="#F0F6E9"/>
+  <circle cx="43" cy="17" r="9" fill="#B9D998"/>
+  <path d="M43 8a9 9 0 0 0 0 18 12 12 0 0 1 0-18" fill="#163E31"/>
 </svg>

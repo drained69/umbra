@@ -55,8 +55,8 @@ export default function PayPanel({ wallet, sub, onSub, payParam, receiptParam, o
   const tabs: [PaySub, string][] = [["send", "Send"], ["request", "Request"], ["split", "Split a bill"], ["requests", "My requests"]];
   return (
     <>
-      <div className="denoms sub-tabs" role="tablist" aria-label="Payment actions">
-        {tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={sub === id} className={`chip ${sub === id ? "active" : ""}`} onClick={() => onSub(id)}>{label}</button>)}
+      <div className="denoms sub-tabs" role="group" aria-label="Payment actions">
+        {tabs.map(([id, label]) => <button key={id} aria-pressed={sub === id} className={`chip ${sub === id ? "active" : ""}`} onClick={() => onSub(id)}>{label}</button>)}
       </div>
       {sub === "send" && <SendForm wallet={wallet} />}
       {sub === "request" && <RequestForm wallet={wallet} onShowRequests={() => onSub("requests")} />}
@@ -130,7 +130,7 @@ function SendForm({ wallet }: { wallet: Wallet }) {
         </div>
         {isPrivate && <>
           <label htmlFor="send-memo">Note (encrypted, only they can read it)</label>
-          <input id="send-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Dinner 🍕" maxLength={60} />
+          <input id="send-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Dinner" maxLength={60} />
           <span className="toolbar-label" style={{ marginTop: 14 }}>PAY FROM</span>
           <div className="denoms">
             <button className={`chip ${effectiveSource === "private" ? "active" : ""}`} disabled={!canUsePrivate} onClick={() => setSource("private")}>Private balance{pa.owner ? ` (${fmt(pa.spendable, 18, 4)})` : ""}</button>
@@ -180,7 +180,7 @@ function RequestShare({ r }: { r: PaymentRequest }) {
       <QrCode value={link} label="QR code of the payment link" />
       <div>
         <strong>{r.amount} {r.asset.symbol}{r.memo ? ` · ${r.memo}` : ""}</strong>
-        <p className="hint">Send this link to your friend. Opening it lets them pay you {r.to.shielded ? "privately" : "publicly"} in a few clicks.</p>
+        <p className="hint">Send this link to the payer. Opening it lets them pay you {r.to.shielded ? "privately" : "publicly"} in a few clicks.</p>
         <div className="row">
           <CopyButton className="primary" value={link}>Copy link</CopyButton>
           {"share" in navigator && <button onClick={() => navigator.share({ title: "Payment request", text: shareText(r) }).catch(() => {})}>Share…</button>}
@@ -234,7 +234,7 @@ function RequestForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequest
     <div className="grid">
       <div className="card">
         <h2>Request money</h2>
-        <p className="hint">Create a link or QR code. Nothing goes on chain until your friend pays.</p>
+        <p className="hint">Create a payment link or QR code. Nothing is recorded on chain until it is paid.</p>
         <div className="two-col">
           <div><label htmlFor="rq-amount">Amount</label><input id="rq-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0" /></div>
           <div><label htmlFor="rq-asset">Asset</label><select id="rq-asset" value={asset.symbol} onChange={(e) => setAsset(ASSETS.find((a) => a.symbol === e.target.value)!)}>{ASSETS.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></div>
@@ -243,7 +243,7 @@ function RequestForm({ wallet, onShowRequests }: { wallet: Wallet; onShowRequest
         <input id="rq-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Concert tickets" maxLength={60} />
         <div className="two-col">
           <div><label htmlFor="rq-name">Your name</label><input id="rq-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Alice" maxLength={40} /></div>
-          <div><label htmlFor="rq-who">From (for your list)</label><input id="rq-who" value={who} onChange={(e) => setWho(e.target.value)} placeholder="Bob" maxLength={40} /></div>
+          <div><label htmlFor="rq-who">Who owes it (only you see this)</label><input id="rq-who" value={who} onChange={(e) => setWho(e.target.value)} placeholder="Bob" maxLength={40} /></div>
         </div>
         <label className="row check-row"><input type="checkbox" checked={privately && privateOk} disabled={!privateOk} onChange={(e) => setPrivately(e.target.checked)} />Get paid privately to my private address{asset.assetId !== null ? ` (${NATIVE} only)` : !targets.shielded ? " (create a private account first)" : ""}</label>
         {privately && privateOk && <label className="check-row"><input type="checkbox" checked={alsoPublic} onChange={(e) => setAlsoPublic(e.target.checked)} />Also let them pay from a public wallet. This puts your public address in the link.</label>}
@@ -422,7 +422,7 @@ function RequestsList({ receiptParam, onClearLink }: { receiptParam: string | nu
       </div>
       <div className="card">
         <h2>Verify a public payment</h2>
-        <p className="hint">When a friend pays publicly, their app gives them a receipt link to send you. It is checked against the chain: the payment and your request id must be in the same transaction.</p>
+        <p className="hint">When someone pays you publicly, their app gives them a receipt link to send you. Umbra checks it against the chain: the payment and your request ID must be in the same transaction.</p>
         <label htmlFor="receipt">Receipt link</label>
         <textarea id="receipt" className="short" value={receiptInput} onChange={(e) => setReceiptInput(e.target.value)} placeholder="…?receipt=…" spellCheck={false} />
         <button className="primary" onClick={() => checkReceipt(receiptInput)} disabled={!receiptInput.trim()}>Verify</button>
@@ -501,7 +501,7 @@ function PayRequestView({ encoded, wallet, onConnect, onDone }: { encoded: strin
             {wallet && req.to.account && <>
               <span className="toolbar-label" style={{ marginTop: 16 }}>PAY PUBLICLY</span>
               <div className="pay-options"><button disabled={busy} onClick={() => pay("public")}>Pay {short(req.to.account)}</button></div>
-              {wallet.kind === "evm" && <p className="hint">From an EVM wallet the payment cannot carry the request id, so no receipt is generated.</p>}
+              {wallet.kind === "evm" && <p className="hint">An EVM wallet payment cannot carry the request ID, so no receipt is generated.</p>}
             </>}
           </>}
           <StatusLine s={status} />

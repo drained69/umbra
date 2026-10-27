@@ -33,7 +33,7 @@ interface Props {
   relayerUrl: string;
 }
 
-const STEPS = ["Check note & recipient", "Scan pool & build Merkle path", "Generate ZK proof", "Submit withdrawal"];
+const STEPS = ["Check note and recipient", "Locate your deposit", "Generate proof", "Submit withdrawal"];
 const CROSS_VM_STEPS = [...STEPS.slice(0, 3), "Verify in WASM VM + attest on EVM", "Submit withdrawal"];
 
 export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Props) {
@@ -143,11 +143,11 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
         });
         const j = await res.json();
         if (!res.ok) throw new Error(j.error || "relayer rejected");
-        setStatus({ t: "ok", m: `Withdrawn via relayer — EVM tx ${short(j.txHash)}` });
+        setStatus({ t: "ok", m: `Withdrawn through the relayer · transaction ${short(j.txHash)}` });
       } else if (wallet.kind === "evm") {
         setStatus({ t: "info", m: "Confirm in your EVM wallet (you pay gas and the ~3.84 tPOT nullifier slot)." });
         const hash = await client.withdrawSelf(p, recipient, wallet.signer);
-        setStatus({ t: "ok", m: `Withdrawn — EVM tx ${short(hash)}` });
+        setStatus({ t: "ok", m: `Withdrawn · transaction ${short(hash)}` });
       } else {
         setStatus({ t: "info", m: "Sign in the Portaldot Extension (you pay the fee and the ~3.84 tPOT nullifier slot)." });
         const api = await getApi();
@@ -168,11 +168,11 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
       <div className="card">
         <h2>Withdraw a note</h2>
         <p className="hint">
-          A zero-knowledge proof shows the pool you own <i>some</i> unspent note — never which one.
+          A zero-knowledge proof shows the pool that you own an unspent note, without revealing which one.
         </p>
         <label htmlFor="withdraw-note">Note backup</label>
         <textarea id="withdraw-note" value={noteStr} onChange={(e) => setNoteStr(e.target.value)} placeholder="umbra-v3-…" spellCheck={false} autoCapitalize="off" autoComplete="off" />
-        <label htmlFor="withdraw-recipient">Recipient — a 0x address or a Portaldot 5… account</label>
+        <label htmlFor="withdraw-recipient">Recipient address (0x… or 5…)</label>
         <input id="withdraw-recipient" value={recipientInput} onChange={(e) => setRecipientInput(e.target.value)} placeholder="0x… or 5…" spellCheck={false} autoCapitalize="off" autoComplete="off" />
         {asset.rules && !asset.rules.sufficient && (
           <p className="hint" style={{ marginTop: 6 }}>
@@ -183,7 +183,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
         {crossVm ? <p className="hint withdrawal-route">This pool's proofs are verified in Portaldot's WASM VM. Your Portaldot Extension signs the verification and then the withdrawal, so your account is the visible sender. The bridge trusts its attestor ({short(crossVm.attestor)}).</p> : relayerUrl ? <label className="row" style={{ marginTop: 14 }}>
           <input type="checkbox" style={{ width: 18 }} checked={useRelayer} onChange={(e) => setUseRelayer(e.target.checked)} />
           <span style={{ color: "var(--ink)" }}>Use relayer (keeps your wallet off the withdrawal transaction)</span>
-        </label> : <p className="hint withdrawal-route">Withdrawals are signed by your connected wallet. A gasless relayer is not connected to this app yet.</p>}
+        </label> : <p className="hint withdrawal-route">No relayer is configured, so your connected wallet submits this withdrawal and appears as its sender.</p>}
         {sinceErr && <div className="status info">{sinceErr}</div>}
         {since !== null && (
           <PrivacyMeter
@@ -242,7 +242,7 @@ export default function WithdrawPanel({ client, wallet, asset, relayerUrl }: Pro
               { k: "verification", v: crossVm ? "Groth16 proof checked by the WASM coprocessor, then attested on the EVM bridge" : "Groth16 proof checked on-chain in the EVM" },
             ]}
             privateRows={[
-              { k: "which note", v: "hidden by ZK Merkle membership" },
+              { k: "which note", v: "hidden by the zero-knowledge proof" },
               { k: "note secret", v: "stays in your local backup" },
             ]}
           />

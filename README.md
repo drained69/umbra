@@ -122,9 +122,11 @@ Verify every address above against the chain (read-only):
 node scripts/verify-native-deployment.js deployments/testnet.json 5Dvps2P4hYwZAwDw2qjTdozWUvwXyFCc98o3RJx2eKHAFXv8
 ```
 
-Deployment tools for operators are not linked in the app. They live at `/?admin` (WASM
-verifier) and `/?admin=full` (full contract set), and every step is signed in the Portaldot
-Extension.
+Contract details and deployment controls are excluded from the product UI. Operators can
+use `make deploy` and the deployment instructions in [`docs/CROSS_VM.md`](docs/CROSS_VM.md).
+The frontend uses [`frontend/src/config/deployment.json`](frontend/src/config/deployment.json);
+update it after verifying a new deployment. The multi-asset private pool has its own
+unlinked deploy page, `/deploy.html`; see [`docs/PRIVATE_SWAPS.md`](docs/PRIVATE_SWAPS.md).
 
 ## Networks & mainnet
 

@@ -73,6 +73,7 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
     setQuoteErr(null);
     setAckImpact(false);
     if (!amount.trim()) return;
+    let cancelled = false;
     const timer = setTimeout(async () => {
       try {
         const api = await getApi();
@@ -81,12 +82,12 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
         const amountIn = toUnits(amount, dec(from));
         let q = await quoteExactIn(api, from, to, amountIn, slippage);
         if (sell === "pusd" && privateRoute) q = await quoteExactOut(api, from, to, q.limit, slippage);
-        setQuote(q);
+        if (!cancelled) setQuote(q);
       } catch (e: any) {
-        setQuoteErr(e.message);
+        if (!cancelled) setQuoteErr(e.message);
       }
     }, 400);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [amount, sell, slippage, privateRoute, tick]);
 
   const impact = quote ? quote.priceImpactBps / 100 : 0;
@@ -134,8 +135,9 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
   return (
     <div className="grid">
       <div className="card swap-card">
-        <h2>Swap</h2>
-        <p className="hint">Live quotes from Portaldot's built-in exchange. With a private account, a swap can also draw from or deliver into your private balance in one transaction.</p>
+        <fieldset disabled={busy} className="swap-controls">
+        <h2>Exchange</h2>
+        <p className="hint">Live quotes from Portaldot's built-in exchange.{!MA && " With a private account, a swap can also draw from or deliver into your private balance in one transaction."}</p>
         <div className="swap-leg">
           <div className="row" style={{ justifyContent: "space-between" }}><span className="toolbar-label">YOU SELL</span><button className="text-button" onClick={() => setAmount(sell === "native" && !privateRoute ? fmtPlain(sellBalance > 2n * 10n ** 13n ? sellBalance - 2n * 10n ** 13n : 0n, 14) : fmtPlain(sellBalance, dec(sell === "native" ? "native" : 7777)))}>Balance: {fmt(sellBalance, dec(sell === "native" ? "native" : 7777), 4)} {sellSym}{privateRoute && sell === "native" ? " (private)" : ""}</button></div>
           <div className="row"><input aria-label={`Amount of ${sellSym} to sell`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0" /><span className="asset-badge">{sellSym}</span></div>
@@ -149,13 +151,13 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
         {pa.owner && !MA && <>
           <span className="toolbar-label" style={{ marginTop: 14 }}>{sell === "native" ? "PAY WITH" : "RECEIVE INTO"}</span>
           <div className="denoms">
-            <button className={`chip ${!privateRoute ? "active" : ""}`} onClick={() => setRoute("wallet")}>Wallet</button>
-            <button className={`chip ${privateRoute ? "active" : ""}`} onClick={() => setRoute("private")}>Private balance</button>
+            <button className={`chip ${!privateRoute ? "active" : ""}`} aria-pressed={!privateRoute} onClick={() => setRoute("wallet")}>Wallet</button>
+            <button className={`chip ${privateRoute ? "active" : ""}`} aria-pressed={privateRoute} onClick={() => setRoute("private")}>Private balance</button>
           </div>
         </>}
 
         <span className="toolbar-label" style={{ marginTop: 14 }}>SLIPPAGE LIMIT</span>
-        <div className="denoms">{SLIPPAGES.map((s) => <button key={s} className={`chip ${slippage === s ? "active" : ""}`} onClick={() => setSlippage(s)}>{s / 100}%</button>)}</div>
+        <div className="denoms">{SLIPPAGES.map((s) => <button key={s} className={`chip ${slippage === s ? "active" : ""}`} aria-pressed={slippage === s} onClick={() => setSlippage(s)}>{s / 100}%</button>)}</div>
 
         {quote && <dl className="quote">
           <div><dt>Rate</dt><dd>1 {sellSym} ≈ {(Number(quote.amountOut) / 10 ** dec(quote.to) / (Number(quote.amountIn) / 10 ** dec(quote.from))).toPrecision(5)} {buySym}</dd></div>
@@ -167,9 +169,10 @@ function NativeSwap({ wallet }: { wallet: Extract<Wallet, { kind: "native" }> })
         {quoteErr && <div className="status err" role="alert">{quoteErr}</div>}
         {impact > 5 && <label className="row check-row"><input type="checkbox" checked={ackImpact} onChange={(e) => setAckImpact(e.target.checked)} />I accept a {impact.toFixed(1)}% price impact (this pool is small)</label>}
         <p className={`privacy-note ${privateRoute ? "private" : ""}`}>
-          {!privateRoute ? "A public swap: your account, the amounts and the pool trade are visible." : sell === "native" ? "Your private notes fund the swap. The chain shows your account withdrawing and swapping this amount, but not which deposit the funds came from." : "The tPOT you buy goes straight into your private balance as an encrypted note. The swap itself is public."}
+          {!privateRoute ? "A public swap: your account, the amounts and the trade are visible on chain." : sell === "native" ? "Your private notes fund the swap. The chain shows your account withdrawing and swapping this amount, but not which deposit the funds came from." : "The tPOT you buy goes straight into your private balance as an encrypted note. The swap itself is public."}
         </p>
         <button className="primary" onClick={swap} disabled={busy || !quote || !!short_ || (impact > 5 && !ackImpact)}>{busy ? "Working…" : short_ ? `Not enough ${sellSym}` : `Swap ${sellSym} for ${buySym}`}</button>
+        </fieldset>
         <StatusLine s={status} />
       </div>
       <PrivateAccountCard compact />

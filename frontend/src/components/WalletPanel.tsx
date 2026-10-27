@@ -19,11 +19,16 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
   const pa = usePrivateAccount();
   const activity = useActivity();
   const [pub, setPub] = useState<{ native: bigint; nativeDecimals: number; pusd: bigint | null } | null>(null);
+  const [balanceError, setBalanceError] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [receive, setReceive] = useState<"public" | "private">("public");
   const myAddress = wallet.kind === "native" ? wallet.account : wallet.address;
 
   useEffect(() => {
     let stop = false;
+    setPub(null);
+    setBalanceError(false);
+    const timeout = setTimeout(() => { if (!stop) setBalanceError(true); }, 15000);
     (async () => {
       if (wallet.kind === "native") {
         const api = await getApi();
@@ -33,24 +38,25 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
           const a: any = await api.query.assets.account(PUSD.assetId, wallet.account);
           pusd = a.isSome ? a.unwrap().balance.toBigInt() : 0n;
         }
-        if (!stop) setPub({ native: acc.data.free.toBigInt(), nativeDecimals: 14, pusd });
+        if (!stop) { setBalanceError(false); setPub({ native: acc.data.free.toBigInt(), nativeDecimals: 14, pusd }); }
       } else {
         const native = await readProvider.getBalance(wallet.address);
         const pusd = PUSD ? await new ethers.Contract(assetErc20Address(PUSD.assetId!), ERC20_ABI, readProvider).balanceOf(wallet.address) : null;
-        if (!stop) setPub({ native, nativeDecimals: 18, pusd: pusd === null ? null : BigInt(pusd) });
+        if (!stop) { setBalanceError(false); setPub({ native, nativeDecimals: 18, pusd: pusd === null ? null : BigInt(pusd) }); }
       }
-    })().catch(() => !stop && setPub(null));
-    return () => { stop = true; };
-  }, [wallet, activity.length]);
+    })().catch(() => { if (!stop) { setPub(null); setBalanceError(true); } }).finally(() => clearTimeout(timeout));
+    return () => { stop = true; clearTimeout(timeout); };
+  }, [wallet, activity.length, refreshTick]);
 
   const received = pa.history.filter((h) => h.text || h.requestId).slice(0, 8);
 
   return (
     <>
+      {balanceError && <div className="status err" role="alert">Couldn’t load your balances. Check your connection and try again. <button onClick={() => setRefreshTick((tick) => tick + 1)}>Retry</button></div>}
       <div className="balance-strip">
-        <div><span className="toolbar-label">{NATIVE} balance</span><strong>{pub ? fmt(pub.native, pub.nativeDecimals, 4) : "…"} <small>{NATIVE}</small></strong></div>
-        {PUSD && <div><span className="toolbar-label">pUSD balance</span><strong>{pub?.pusd != null ? fmt(pub.pusd, PUSD.decimals, 4) : "…"} <small>pUSD</small></strong></div>}
-        <div><span className="toolbar-label">Private balance</span>{pa.owner
+        <div><span className="balance-label">{NATIVE} balance</span><strong>{pub ? fmt(pub.native, pub.nativeDecimals, 4) : balanceError ? "Unavailable" : "…"} <small>{NATIVE}</small></strong></div>
+        {PUSD && <div><span className="balance-label">pUSD balance</span><strong>{pub?.pusd != null ? fmt(pub.pusd, PUSD.decimals, 4) : balanceError ? "Unavailable" : "…"} <small>pUSD</small></strong></div>}
+        <div><span className="balance-label">Private balance</span>{pa.owner
           ? <strong>{pa.balance === null ? "…" : fmt(pa.balance, 18, 4)} <small>{NATIVE}</small></strong>
           : <><strong><small>{pa.locked ? "Locked" : "Not set up"}</small></strong><button className="text-button" onClick={() => document.getElementById("private-account")?.scrollIntoView({ behavior: "smooth", block: "center" })}>{pa.locked ? "Unlock with your passcode" : "Set up a private account"}</button></>}</div>
       </div>
@@ -65,7 +71,7 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
       <div className="grid">
         <div className="card">
           <h2>Receive</h2>
-          <div className="denoms" role="tablist" aria-label="Receive to">
+          <div className="denoms" role="group" aria-label="Receive to">
             <button className={`chip ${receive === "public" ? "active" : ""}`} aria-pressed={receive === "public"} onClick={() => setReceive("public")}>Public address</button>
             <button className={`chip ${receive === "private" ? "active" : ""}`} aria-pressed={receive === "private"} onClick={() => setReceive("private")}>Private address</button>
           </div>
@@ -77,9 +83,9 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
           ) : pa.owner ? (
             <div className="receive-box">
               <QrCode value={pa.owner.address()} label="QR code of your private address" />
-              <div><p className="hint">Payments to this address are encrypted: the chain does not show you as the recipient or the amount.</p><p className="mono wrap">{short(pa.owner.address())}</p><CopyButton value={pa.owner!.address()}>Copy private address</CopyButton></div>
+              <div><p className="hint">Payments to this address are encrypted. The chain shows neither you as the recipient nor the amount.</p><p className="mono wrap">{short(pa.owner.address())}</p><CopyButton value={pa.owner!.address()}>Copy private address</CopyButton></div>
             </div>
-          ) : <p className="hint" style={{ marginTop: 14 }}>Create a private account below to get a private address.</p>}
+          ) : <p className="hint" style={{ marginTop: 14 }}>Set up a private account to get a private address.</p>}
         </div>
         <PrivateAccountCard />
       </div>
@@ -94,7 +100,7 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
             </ul>
           </>}
           <span className="toolbar-label" style={{ marginTop: 12 }}>Recent</span>
-          {activity.length === 0 ? <p className="hint">Payments, requests and swaps you make here appear in this list.</p> : (
+          {activity.length === 0 ? <p className="hint">Payments, requests and swaps you make here will appear in this list.</p> : (
             <ul className="list">
               {activity.slice(0, 12).map((a) => <li key={a.id}><span className={`tag ${a.private ? "private" : ""}`}>{a.kind}</span><span className="grow">{a.title}{a.detail && <small> · {a.detail}</small>}</span>{a.href ? <a href={a.href} target="_blank" rel="noreferrer">view ↗</a> : <small>{new Date(a.at).toLocaleDateString()}</small>}</li>)}
             </ul>
@@ -127,7 +133,7 @@ function ContactsCard() {
   return (
     <div className="card">
       <h2>Contacts</h2>
-      <p className="hint">Saved in this browser, so you can pay and request from friends by name.</p>
+      <p className="hint">Saved only in this browser, so you can pay and request by name.</p>
       {contacts.length > 0 && <ul className="list">{contacts.map((c) => <li key={c.id}><span className="avatar">{c.name.slice(0, 1).toUpperCase()}</span><span className="grow"><strong>{c.name}</strong><small> {c.shielded ? "private" : ""}{c.shielded && c.account ? " · " : ""}{c.account ? short(c.account) : ""}</small></span><button className="text-button" onClick={() => setDraft(c)}>Edit</button><button className="text-button" onClick={() => remove(c.id)} aria-label={`Remove ${c.name}`}>×</button></li>)}</ul>}
       <label htmlFor="c-name">{draft.id ? "Edit contact" : "Add a contact"}</label>
       <input id="c-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Name" maxLength={40} />

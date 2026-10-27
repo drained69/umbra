@@ -88,7 +88,7 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
     </div>
     <div className="card">
       <h2>Move private {MA ? "funds" : NATIVE}</h2>
-      <p className="hint">Deposit any amount, send to another private address, or withdraw to a 0x wallet. Your wallet signs only deposits; the relayer submits sends and withdrawals, so they don't point back to you.</p>
+      <p className="hint">Deposit any amount, send to another private address, or withdraw to any wallet. Your wallet signs only deposits; the relayer submits sends and withdrawals, so they are not linked to you.</p>
       <PrivatePoolMeter refreshKey={pa.history.length} />
       <div className="denoms">{(["deposit", "send", "withdraw"] as Action[]).map((item) => <button key={item} className={`chip ${action === item ? "active" : ""}`} aria-pressed={action === item} onClick={() => { setAction(item); setStatus(null); }}>{item === "send" ? "Send privately" : item === "deposit" ? "Deposit" : "Withdraw"}</button>)}</div>
       {MA && <div className="denoms" role="group" aria-label="Asset" style={{ marginTop: 12 }}>{MA.assets.map((a) => <button key={a.id} className={`chip ${assetId === a.id ? "active" : ""}`} aria-pressed={assetId === a.id} onClick={() => { setAssetId(a.id); setAmount(""); }}>{a.symbol}{pa.owner ? ` · ${fmt(pa.maBalances.get(BigInt(a.id)) ?? 0n, a.decimals, 4)}` : ""}</button>)}</div>}

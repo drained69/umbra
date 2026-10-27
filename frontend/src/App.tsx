@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ethers } from "ethers";
-import { UmbraPoolClient, UmbraNative, exportViewingKey, type Note } from "@umbra/sdk";
+import { UmbraPoolClient, UmbraNative, type Note } from "@umbra/sdk";
 import { DEPLOYMENT, NATIVE, HAS_EVM_RPC, SCAN_CHUNK, assets, isCrossVmPool, format, getApi, readProvider, short, blockLink, PORTALDOT_EXTENSION_URL } from "./lib/chain";
 import { connectEvm, connectNative, getViewingKey, listNativeAccounts, restoreViewingKey, type NativeAccount, type Wallet } from "./lib/wallet";
 import type { TxRef } from "./components/DepositPanel";
 import CopyButton from "./components/CopyButton";
 import { ArrowRightIcon, EyeOffIcon, HomeIcon, KeyIcon, LockIcon, PrivacyIcon, RequestIcon, SendIcon, ShieldIcon, SwapIcon, WalletIcon } from "./components/Icons";
 import { PrivateAccountProvider } from "./lib/privateAccount";
+import { MA } from "./lib/multi";
 import type { PaySub } from "./components/PayPanel";
 
 const WalletPanel = lazy(() => import("./components/WalletPanel"));
@@ -16,18 +17,13 @@ const DepositPanel = lazy(() => import("./components/DepositPanel"));
 const WithdrawPanel = lazy(() => import("./components/WithdrawPanel"));
 const AuditorPanel = lazy(() => import("./components/AuditorPanel"));
 const PrivateTransferPanel = lazy(() => import("./components/PrivateTransferPanel"));
-// Operator-only deployment tools, reachable at ?admin (cross-VM) or ?admin=full; not linked in the app.
-const DeployPanel = lazy(() => import("./components/DeployPanel"));
-const CrossVmDeployPanel = lazy(() => import("./components/CrossVmDeployPanel"));
 
 type Tab = "overview" | "wallet" | "pay" | "swap" | "deposit" | "withdraw" | "transfer" | "auditor";
 /** Tabs that act on one fixed-size pool and show the asset / pool-size toolbar. */
 const POOL_TABS: Tab[] = ["deposit", "withdraw", "auditor"];
 const LINK = new URLSearchParams(location.search);
-const ADMIN = LINK.has("admin");
 const REPO_URL: string = (import.meta as any).env?.VITE_REPO_URL || "";
 const RELAYER_URL = (import.meta as any).env?.VITE_RELAYER_URL || "";
-const NET_LABEL = DEPLOYMENT.network === "portaldot-v3-live" ? "Portaldot V3 live" : "Portaldot V3 testnet";
 
 export default function App() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -104,7 +100,8 @@ export default function App() {
 
   // balances
   useEffect(() => {
-    if (!wallet) { setBalance(""); return; }
+    setBalance("");
+    if (!wallet) return;
     let stop = false;
     (async () => {
       if (wallet.kind === "native") {
@@ -127,8 +124,8 @@ export default function App() {
     setConnectErr(null);
     try {
       const { extensions, accounts } = await listNativeAccounts();
-      if (!extensions.length) throw new Error("No Portaldot Extension found.");
-      if (!accounts.length) throw new Error("The extension has no accounts (or access was denied).");
+      if (!extensions.length) throw new Error("Portaldot Extension not found. Install it, then try again.");
+      if (!accounts.length) throw new Error("No accounts available. Add an account in your extension, or allow Umbra to access it.");
       if (accounts.length === 1) await chooseNative(accounts[0]);
       else setNativeAccounts(accounts);
     } catch (e: any) {
@@ -179,7 +176,7 @@ export default function App() {
     { id: "transfer", label: "Privacy", icon: <PrivacyIcon /> },
   ];
   const privacyTools: { id: Tab; label: string }[] = [
-    { id: "transfer", label: "Private account" },
+    { id: "transfer", label: "Private balance" },
     { id: "deposit", label: "Shield" },
     { id: "withdraw", label: "Withdraw" },
     { id: "auditor", label: "Viewing keys" },
@@ -192,15 +189,15 @@ export default function App() {
     tab === "wallet" ? "Your balances, ways to get paid, and the people you pay."
     : tab === "pay" ? (payParam ? "Someone sent you a payment request." : "Pay anyone, request money, or split a bill.")
     : tab === "swap" ? "Trade tPOT and pUSD on Portaldot's built-in exchange."
-    : tab === "transfer" ? "Hold a private balance and send it to other private addresses."
-    : tab === "deposit" ? "Move a fixed amount into a shielded pool. You keep the note that unlocks it."
-    : tab === "withdraw" ? "Withdraw a shielded note to any address without revealing which deposit it was."
-    : "Share read-only access to your activity. A viewing key can never spend.";
+    : tab === "transfer" ? "Add funds, pay other private addresses and withdraw, without exposing your wallet."
+    : tab === "deposit" ? "Deposit a fixed amount into a shielded pool. Keep the note it creates: it is the only way to withdraw."
+    : tab === "withdraw" ? "Withdraw a shielded note to any address. The proof does not reveal which deposit it came from."
+    : "Give read-only access to your activity. A viewing key can never move funds.";
   const connectPrompt = (what: string) => (
     <div className="wallet-prompt">
       <span className="prompt-icon"><WalletIcon /></span>
       <h2>Connect your wallet</h2>
-      <p>{what} Every transaction is signed in your own wallet; Umbra never holds your keys or funds.</p>
+      <p>{what} Umbra never holds your keys or your funds.</p>
       <div className="prompt-buttons">
         <button className="primary" onClick={pickNative} disabled={connecting}>{connecting ? "Connecting…" : "Connect Portaldot wallet"}</button>
         {HAS_EVM_RPC && <button className="ghost" onClick={pickEvm} disabled={connecting}>Use an EVM wallet</button>}
@@ -216,12 +213,12 @@ export default function App() {
         <button className="brand-lockup" type="button" onClick={() => openTab("overview")} aria-label="Umbra home">
           <img className="brand-symbol" src="/umbra-mark.svg" alt="" width="32" height="32" /><strong>umbra<span className="brand-period">.</span></strong>
         </button>
-        {!ADMIN && <nav className="app-nav" aria-label="Main navigation">
+        <nav className="app-nav" aria-label="Main navigation">
           {navigation.map((item) => {
             const active = tab === item.id || (item.id === "transfer" && isPrivacyTab(tab));
             return <button key={item.id} className={`nav-item ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => openTab(item.id)}><span className="nav-icon">{item.icon}</span><span>{item.label}</span></button>;
           })}
-        </nav>}
+        </nav>
         <div className="topbar-right">
           {wallet ? <div className="account-menu" ref={accountMenuRef}>
             <button className="account-tag" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} title={wallet.kind === "native" ? wallet.account : wallet.address}>
@@ -242,24 +239,18 @@ export default function App() {
 
       <div className="workspace-main">
         <main className="workspace-scroll" id="main-content" tabIndex={-1}>
-          <div className="network-notice" role="note"><span className="network-dot" />{NET_LABEL}<span className="network-notice-detail">{DEPLOYMENT.network === "portaldot-v3-live" ? "Live network: transactions use real POT" : "Test tokens only, no real monetary value"}</span></div>
           <div className="content-wrap">
-            {ADMIN ? <>
-              <div className="page-heading"><div><h1>Operator console</h1><p>Deployment tools for whoever operates this Umbra instance. Not linked from the app; deployed addresses are listed in the README.</p></div></div>
-              {wallet?.kind === "native" ? <Suspense fallback={<div className="loading-panel" role="status">Loading deployment tools…</div>}>
-                {new URLSearchParams(location.search).get("admin") === "full" ? <DeployPanel key={wallet.account} wallet={wallet} /> : <CrossVmDeployPanel key={wallet.account} wallet={wallet} />}
-              </Suspense> : connectPrompt("Deployments are signed by a native Portaldot account.")}
-            </> : tab === "overview" ? <>
+            {tab === "overview" ? <>
               <section className="hero-panel" aria-labelledby="hero-title">
                 <div className="hero-copy">
-                  <span className="hero-eyebrow"><span className="status-orb" /> Private payments on Portaldot</span>
+                  <span className="hero-eyebrow"><span className="status-orb" /> Private payments on Portaldot · Testnet</span>
                   <h1 id="hero-title">Your money.<br /><em>Your privacy.</em></h1>
-                  <p>Pay friends, request money, split bills and swap — publicly when it doesn't matter, privately when it does. You always see what is shared before you sign.</p>
+                  <p>Pay, request, split bills and swap on Portaldot, publicly or privately. You choose what is shared, and you see it before anything is sent.</p>
                   <div className="hero-actions">
                     {wallet ? <button className="hero-primary" onClick={() => openTab("wallet")}>Open your wallet</button> : <button className="hero-primary" onClick={pickNative} disabled={connecting}>{connecting ? "Connecting…" : "Connect wallet"}</button>}
                     <button className="hero-secondary" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })}>How it works</button>
                   </div>
-                  <small className="hero-disclosure">Deposits, withdrawals and the wallet that pays the fee stay public. Umbra hides the link between them.</small>
+                  <small className="hero-disclosure">{RELAYER_URL ? `Deposits into Umbra are public. After that, a relayer submits your private payments${MA ? ", swaps" : ""} and withdrawals, so they are not linked to your wallet.` : "Deposits into Umbra are public. Umbra hides the link between a deposit and where the money goes next."}</small>
                 </div>
                 <div className="hero-visual" aria-hidden="true">
                   <svg viewBox="0 0 320 320" fill="none">
@@ -278,30 +269,30 @@ export default function App() {
               </section>
 
               <div className="overview-facts">
-                <div><span className="fact-icon"><KeyIcon /></span><div><strong>Your keys, your money</strong><span>Every payment is signed in your own wallet. Umbra never holds your funds.</span></div></div>
-                <div><span className="fact-icon"><EyeOffIcon /></span><div><strong>Private by choice</strong><span>Pay a private address and the recipient and amount stay off the public record.</span></div></div>
-                <div><span className="fact-icon"><ShieldIcon /></span><div><strong>Share on your terms</strong><span>Give an accountant read-only access with a viewing key. It can never spend.</span></div></div>
+                <div><span className="fact-icon"><KeyIcon /></span><div><strong>Self-custody</strong><span>Your keys stay in your wallet and your browser. Umbra never holds your funds.</span></div></div>
+                <div><span className="fact-icon"><EyeOffIcon /></span><div><strong>Private by choice</strong><span>Pay from your private balance and the sender, recipient and amount stay off the public record.</span></div></div>
+                <div><span className="fact-icon"><ShieldIcon /></span><div><strong>Selective disclosure</strong><span>Give an accountant or auditor read-only access with a viewing key. It can never move funds.</span></div></div>
               </div>
 
-              <div className="section-title"><h2>Everything you need</h2><p>The everyday money tools you expect, with privacy built in.</p></div>
+              <div className="section-title"><h2>What you can do</h2><p>Everyday payments, with privacy built in.</p></div>
               <div className="feature-grid">
-                <button className="feature-card" onClick={() => goTo("pay", "send")}><span className="feature-icon"><SendIcon /></span><strong>Pay anyone</strong><p>Send {NATIVE} or pUSD to a wallet or a private address, with a private note only they can read.</p><span className="feature-link">Send money</span></button>
-                <button className="feature-card" onClick={() => goTo("pay", "request")}><span className="feature-icon"><RequestIcon /></span><strong>Request & split</strong><p>Share a link or QR code for what a friend owes you, or split a bill. Private payments mark themselves paid.</p><span className="feature-link">Request money</span></button>
-                <button className="feature-card" onClick={() => openTab("swap")}><span className="feature-icon"><SwapIcon /></span><strong>Swap</strong><p>Trade {NATIVE} and pUSD with a live quote and a guaranteed minimum, from or into your private balance.</p><span className="feature-link">Swap tokens</span></button>
-                <button className="feature-card" onClick={() => openTab("transfer")}><span className="feature-icon"><LockIcon /></span><strong>Private account</strong><p>A private balance you can top up, send from and withdraw any time. Back up one key to restore it anywhere.</p><span className="feature-link">Open private account</span></button>
-                <button className="feature-card" onClick={() => openTab("deposit")}><span className="feature-icon"><ShieldIcon /></span><strong>Shielded pools</strong><p>{configuredPoolCount ? `Deposit a fixed amount of ${assetNames} and withdraw it later to any address, unlinked.` : "Shielded pools are not available on this network yet."}</p><span className="feature-link">Shield funds</span></button>
-                <button className="feature-card" onClick={() => openTab("auditor")}><span className="feature-icon"><KeyIcon /></span><strong>Viewing keys</strong><p>Show your history to someone you trust — an accountant or auditor — without giving them spending power.</p><span className="feature-link">Manage access</span></button>
+                <button className="feature-card" onClick={() => goTo("pay", "send")}><span className="feature-icon"><SendIcon /></span><strong>Pay anyone</strong><p>Send {NATIVE} or pUSD to a public or private address, with an encrypted note only the recipient can read.</p><span className="feature-link">Send money</span></button>
+                <button className="feature-card" onClick={() => goTo("pay", "request")}><span className="feature-icon"><RequestIcon /></span><strong>Request and split</strong><p>Share a payment link or QR code, or split a bill between several people. Private payments are matched to requests automatically.</p><span className="feature-link">Request money</span></button>
+                <button className="feature-card" onClick={() => openTab("swap")}><span className="feature-icon"><SwapIcon /></span><strong>Swap</strong><p>{MA ? `Trade ${NATIVE} and pUSD at live exchange prices, from your wallet or privately inside your private balance.` : `Trade ${NATIVE} and pUSD at live exchange prices, with a minimum-received limit.`}</p><span className="feature-link">Swap tokens</span></button>
+                <button className="feature-card" onClick={() => openTab("transfer")}><span className="feature-icon"><LockIcon /></span><strong>Private balance</strong><p>Top up, send and withdraw at any time. One spend key, which you back up, restores it on any device.</p><span className="feature-link">Open private balance</span></button>
+                <button className="feature-card" onClick={() => openTab("deposit")}><span className="feature-icon"><ShieldIcon /></span><strong>Shielded pools</strong><p>{configuredPoolCount ? `Deposit a fixed amount of ${assetNames} and later withdraw it to any address, with no link to the deposit.` : "Shielded pools are not available on this network yet."}</p><span className="feature-link">Shield funds</span></button>
+                <button className="feature-card" onClick={() => openTab("auditor")}><span className="feature-icon"><KeyIcon /></span><strong>Viewing keys</strong><p>Show your history to someone you trust, such as an accountant or auditor, without giving them the ability to spend.</p><span className="feature-link">Manage access</span></button>
               </div>
 
-              <div className="section-title" id="how"><h2>How privacy works</h2><p>Three steps. Nothing to install beyond your wallet.</p></div>
+              <div className="section-title" id="how"><h2>How privacy works</h2><p>Three steps. Nothing to install beyond a Portaldot wallet.</p></div>
               <div className="overview-lower">
-                <div className="how-step"><span>1</span><strong>Add funds privately</strong><p>Top up your private balance from your wallet. The top-up is public; where the money goes next is not.</p></div>
-                <div className="how-step"><span>2</span><strong>Pay and get paid</strong><p>Payments between private addresses are encrypted. Only the recipient can see the amount and your note.</p></div>
-                <div className="how-step"><span>3</span><strong>Withdraw any time</strong><p>A zero-knowledge proof, made in your browser, shows you own funds in the pool without revealing which.</p></div>
+                <div className="how-step"><span>1</span><strong>Add funds</strong><p>Top up your private balance from your wallet. The top-up is public; where the money goes next is not.</p></div>
+                <div className="how-step"><span>2</span><strong>Pay and get paid</strong><p>Private payments are encrypted, and a relayer submits them for you. Only the recipient can see the amount and your note.</p></div>
+                <div className="how-step"><span>3</span><strong>Withdraw at any time</strong><p>A zero-knowledge proof, generated in your browser, shows that you own funds in the pool without revealing which.</p></div>
               </div>
 
               <div className="trust-band">
-                <div><h2>Testnet beta</h2><p>Umbra runs on the Portaldot V3 testnet with test tokens. Proofs are generated in your browser and verified on chain; the code is open source and audited internally.</p></div>
+                <div><h2>Testnet beta</h2><p>Umbra runs on the Portaldot V3 testnet with test tokens that have no monetary value. Proofs are generated in your browser and verified on chain. The contracts have not yet been independently audited.</p></div>
                 {wallet ? <button className="primary" onClick={() => openTab("wallet")}>Go to wallet</button> : <button className="primary" onClick={pickNative} disabled={connecting}>Get started</button>}
               </div>
             </> : <>
@@ -323,7 +314,7 @@ export default function App() {
                   {client && tab === "auditor" && asset && <AuditorPanel key={poolAddr} client={client} myViewingKey={viewingKey} denomLabel={denom} decimals={asset.decimals} symbol={asset.symbol} />}
                   {tab === "transfer" && (privateAccountReady ? <PrivateTransferPanel wallet={wallet} /> : <div className="notice-card"><span>ⓘ</span><div><strong>Not available on this network</strong><p>Private accounts have not been set up here yet.</p></div></div>)}
                 </Suspense>
-                {tab === "auditor" && <div className="key-actions">{wallet.kind === "native" && viewingKey && <CopyButton className="ghost" value={exportViewingKey(viewingKey)}>Copy viewing key</CopyButton>}{wallet.kind === "native" && <button className="ghost" onClick={() => { const v = prompt("Paste a previously exported viewing key (umbra-vk-…)"); if (v) { try { setViewingKey(restoreViewingKey(wallet, v)); } catch (e: any) { setConnectErr(e?.message || String(e)); } } }}>Restore viewing key</button>}{wallet.kind === "evm" && !viewingKey && <button className="ghost" onClick={async () => { try { setViewingKey(await getViewingKey(wallet)); } catch (e: any) { setConnectErr(e?.message || String(e)); } }}>Derive viewing key</button>}</div>}
+                {tab === "auditor" && <div className="key-actions">{wallet.kind === "native" && <button className="ghost" onClick={() => { const v = prompt("Paste a viewing key you exported earlier (umbra-vk-…)"); if (v) { try { setViewingKey(restoreViewingKey(wallet, v)); } catch (e: any) { setConnectErr(e?.message || String(e)); } } }}>Restore viewing key</button>}{wallet.kind === "evm" && !viewingKey && <button className="ghost" onClick={async () => { try { setViewingKey(await getViewingKey(wallet)); } catch (e: any) { setConnectErr(e?.message || String(e)); } }}>Derive viewing key</button>}</div>}
               </>}
             </>}
             {connectErr && <div className="status err connect-error" role="alert"><span>{connectErr} {/Portaldot Extension/.test(connectErr) && <a href={PORTALDOT_EXTENSION_URL} target="_blank" rel="noreferrer">Install the Portaldot Extension</a>}</span><button aria-label="Dismiss error" onClick={() => setConnectErr(null)}>×</button></div>}
@@ -331,7 +322,7 @@ export default function App() {
           </div>
           <footer className="workspace-footer">
             <span className="footer-brand"><img src="/umbra-mark.svg" width="22" height="22" alt="" /><span>umbra<span className="brand-period">.</span></span></span>
-            <span>Private payments on Portaldot. Privacy improves as more people use the pools.</span>
+            <span>Private payments on Portaldot V3 testnet. Privacy grows as more people use Umbra.</span>
             <span className="footer-links">{REPO_URL && <a href={REPO_URL} target="_blank" rel="noreferrer">Source code</a>}<a href={PORTALDOT_EXTENSION_URL} target="_blank" rel="noreferrer">Portaldot Extension</a></span>
           </footer>
         </main>
