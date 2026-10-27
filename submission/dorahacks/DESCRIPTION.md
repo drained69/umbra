@@ -8,7 +8,7 @@ Umbra is a zero-knowledge privacy layer for payments, payment requests and swaps
 | | |
 |---|---|
 | 🌐 **Live app** | https://umbrav1.up.railway.app |
-| 🎬 **Demo video (2 min)** | [YOUTUBE_LINK] |
+| 🎬 **Demo video (2 min)** | https://www.youtube.com/watch?v=hMTj8YFXGWM |
 | 💻 **Source code** | https://github.com/drained69/umbra |
 | ⛓️ **Network** | Portaldot V3 testnet (EVM chain ID `420420777`) |
 | 🏁 **Track** | Ecosystem DApps (+ Modular Cloud & Middleware) |
@@ -55,7 +55,7 @@ Privacy is a choice, not a mode: the same app also makes ordinary public payment
 
 ## 🎬 Demo walkthrough
 
-**Watch the 2-minute demo:** [YOUTUBE_LINK]
+**Watch the 2-minute demo:** https://www.youtube.com/watch?v=hMTj8YFXGWM
 
 All names, addresses and amounts in the screenshots below are example data.
 
