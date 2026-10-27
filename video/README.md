@@ -12,6 +12,7 @@ npm run audio              # narration stem, both soundtrack masters and the .sr
 npm run render:landscape   # out/umbra-landscape-1920x1080.mp4
 npm run render:portrait    # out/umbra-portrait-1080x1920.mp4
 npm run render:thumbnail   # out/umbra-thumbnail-1280x720.png (YouTube custom thumbnail)
+node scripts/make-deck.mjs out/deck   # pitch deck: slide PNGs + Umbra-Pitch-Deck.pdf
 npm run studio             # scrub the timeline in the browser
 node scripts/stills.mjs UmbraDemoLandscape out/review --sections   # review frames
 ```

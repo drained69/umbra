@@ -3,6 +3,7 @@ import { Composition } from "remotion";
 import { Movie } from "./Movie";
 import { Thumbnail } from "./Thumbnail";
 import { Architecture } from "./Architecture";
+import { Deck } from "./Deck";
 import { FPS, TOTAL_FRAMES } from "./timing.mjs";
 
 export const Root: React.FC = () => (
@@ -25,6 +26,7 @@ export const Root: React.FC = () => (
       height={1920}
       defaultProps={{ orientation: "portrait" as const, withAudio: true, voiceover: false }}
     />
+    <Composition id="UmbraDeck" component={Deck} durationInFrames={1} fps={FPS} width={1920} height={1080} defaultProps={{ slide: 0 }} />
     <Composition id="UmbraArchitecture" component={Architecture} durationInFrames={1} fps={FPS} width={1600} height={900} />
     <Composition id="UmbraThumbnail" component={Thumbnail} durationInFrames={1} fps={FPS} width={1280} height={720} />
   </>
