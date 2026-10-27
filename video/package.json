@@ -1,0 +1,25 @@
+{
+  "name": "umbra-demo-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Umbra 2-minute product demo — Remotion, code-generated soundtrack.",
+  "scripts": {
+    "audio": "node scripts/make-audio.mjs",
+    "studio": "remotion studio",
+    "still": "remotion still",
+    "render:landscape": "remotion render UmbraDemoLandscape out/umbra-landscape-1920x1080.mp4 --concurrency=6 --video-bitrate=12M --x264-preset=slow --audio-bitrate=320k",
+    "render:portrait": "remotion render UmbraDemoPortrait out/umbra-portrait-1080x1920.mp4 --concurrency=6 --video-bitrate=12M --x264-preset=slow --audio-bitrate=320k"
+  },
+  "dependencies": {
+    "@remotion/fonts": "^4.0.0",
+    "@remotion/media-utils": "^4.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@types/react": "18.3.12",
+    "typescript": "5.6.3"
+  }
+}
