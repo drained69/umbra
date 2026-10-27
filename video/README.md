@@ -68,8 +68,11 @@ All amounts, names, addresses, block hashes and links are placeholders:
 - Accounts: Alice `5Dw9…K2mf` (payer), Bob (recipient), Sam (requester), a second "Savings" account in the picker
 - Addresses: `umbra-addr-7h3q…x9f2`, `umbra-addr-k2m8…r4vd`; spend key shown only masked (`umbra-sk-••••`)
 - Deposit 50 tPOT · private payment 12.5 tPOT ("Rent for May") · request 2.5 tPOT ("Concert tickets")
-- Swap 10 tPOT → 24.984210 pUSD, rate 2.4984, relayer fee 0.0500 tPOT, price impact 0.42%
-- Relayer fees use the deployment's 50 bps (0.0625 / 0.0125 tPOT); pool activity 48–50 private transactions
+- Relayer fee 9 tPOT per private transaction, the live default from the relayer's `/status`; the
+  private balance runs 50 → 28.5 → 17 → 4 tPOT (+ 3.2154 pUSD) across the film
+- Swap 4 tPOT → 3.215426 pUSD (rate 0.80386, price impact 2.66%): a real quote from the live
+  relayer on 2026-10-27; live prices move. Amounts use the app's own formatting (no padded zeros)
+- Pool activity 12 → 50 private transactions; Bob's public balance 312.4 tPOT
 - Block hashes (`0x8f3a…c21d` etc.) and the `?pay=Ak3x…9QfE` link payload
 
 On-screen product copy (labels, hints, status messages, privacy notes) is taken verbatim from

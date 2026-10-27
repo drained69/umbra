@@ -14,7 +14,7 @@ const CREATE = cueLocal("accountCreate"); // beat 6
 const BAL = cueLocal("accountBalance"); // beat 15
 const SAVED = BAL - 16;
 
-export const ACCOUNT = { initial: "A", label: "Alice", balance: "1,240.00 tPOT" }; // example account
+export const ACCOUNT = { initial: "A", label: "Alice", balance: "1,240 tPOT" }; // example account
 export const PRIVATE_ADDR = "umbra-addr-7h3q…x9f2"; // placeholder, not a real address
 
 export const PrivacyNav: React.FC<{ active?: number }> = ({ active = 0 }) => (
@@ -109,8 +109,8 @@ const AccountBody: React.FC = () => {
                 <span style={{ color: L.accent, fontWeight: 600, fontSize: 13 }}>Refresh</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, margin: "12px 0 16px" }}>
-                <BalanceTile label="tPOT balance" amount="0.0000" unit="tPOT" />
-                <BalanceTile label="pUSD balance" amount="0.0000" unit="pUSD" />
+                <BalanceTile label="tPOT balance" amount="0" unit="tPOT" />
+                <BalanceTile label="pUSD balance" amount="0" unit="pUSD" />
               </div>
               <div style={{ paddingTop: 14, borderTop: `1px solid ${L.border}`, color: L.muted, fontSize: 14 }}>Saved in this browser, encrypted with your passcode.</div>
             </Card>

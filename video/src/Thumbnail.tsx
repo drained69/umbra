@@ -47,8 +47,8 @@ export const Thumbnail: React.FC = () => (
     >
       <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, color: L.ink, marginBottom: 14 }}>Private account</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <BalanceTile label="tPOT balance" amount="37.4375" unit="tPOT" highlight />
-        <BalanceTile label="pUSD balance" amount="24.9842" unit="pUSD" />
+        <BalanceTile label="tPOT balance" amount="28.5" unit="tPOT" highlight />
+        <BalanceTile label="pUSD balance" amount="0" unit="pUSD" />
       </div>
       <StatusLine kind="ok" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 15, fontWeight: 600, whiteSpace: "nowrap" }}>
         <span style={{ flex: "none", display: "grid", placeItems: "center", width: 22, height: 22, borderRadius: "50%", background: L.accent, color: "#fff", fontSize: 13 }}>✓</span>

@@ -7,7 +7,7 @@ import { Cursor } from "../components/Cursor";
 import { AppBox, Anchor, useAnchors, useRefs, useApp } from "../components/context";
 import { Card, PrimaryButton, GhostButton, PrivacyNote, ToolbarLabel, PrivacyMeter } from "../components/ui";
 import { light as L, font, shadow, brand } from "../theme";
-import { appear, cursorAt, clickRipple, isPressing } from "../anim";
+import { appear, cursorAt, clickRipple, isPressing, glide } from "../anim";
 import { cueLocal } from "../timing.mjs";
 import { ACCOUNT } from "./Account";
 import { AccountCard, MSG, StatusSeq } from "./shared";
@@ -18,7 +18,6 @@ const LINK = 58;
 const OPEN = LINK + 8;
 const BTN = 123;
 const PAY_URL = "umbrav1.up.railway.app/?pay=Ak3x…9QfE"; // placeholder link payload
-const fmt4 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
 export const Request: React.FC<{ orientation: Orientation }> = ({ orientation }) => (
   <SceneLayout
@@ -77,7 +76,8 @@ const RequestBody: React.FC = () => {
 
   const opened = frame >= OPEN;
   const paid = frame >= PAY;
-  const tpot = fmt4(interpolate(frame, [PAY, PAY + 30], [37.4375, 34.925], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  // 2.5 tPOT + the 9 tPOT relayer fee
+  const tpot = glide(frame, PAY, PAY + 30, 28.5, 17);
 
   const pos = cursorAt(frame, portrait ? [620, 1150] : [980, 820], [
     { start: MSG_IN + 14, end: LINK - 2, to: "link" },
@@ -90,7 +90,7 @@ const RequestBody: React.FC = () => {
         {!opened ? (
           <>
             <PageHeading title="Wallet" description="Your balances, ways to get paid, and the people you pay." />
-            <Grid><AccountCard frame={frame} tpot="37.4375" pusd="0.0000" /></Grid>
+            <Grid><AccountCard frame={frame} tpot="28.5" pusd="0" /></Grid>
           </>
         ) : (
           <div style={{ opacity: appear(frame, OPEN, 8) }}>
@@ -107,12 +107,12 @@ const RequestBody: React.FC = () => {
                     <ToolbarLabel style={{ marginTop: 16, marginBottom: 8 }}>Pay privately</ToolbarLabel>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                       <Anchor r={refs.payPrivate}>
-                        <PrimaryButton pressed={isPressing(frame, BTN)}>{frame >= BTN ? "Working…" : "From my private balance (37.4375 tPOT)"}</PrimaryButton>
+                        <PrimaryButton pressed={isPressing(frame, BTN)}>{frame >= BTN ? "Working…" : "From my private balance (28.5 tPOT)"}</PrimaryButton>
                       </Anchor>
                       <GhostButton>From my wallet</GhostButton>
                     </div>
                     <PrivacyNote>From your private balance, nobody can see who paid whom or how much. No wallet connection needed.</PrivacyNote>
-                    <PrivacyNote style={{ marginTop: 0 }}>Umbra's relayer submits this transaction, so your wallet does not sign it. Withdrawal addresses and amounts remain public, and timing can still link activity. Fee: 0.0125 tPOT, taken from your private balance.</PrivacyNote>
+                    <PrivacyNote style={{ marginTop: 0 }}>Umbra's relayer submits this transaction, so your wallet does not sign it. Withdrawal addresses and amounts remain public, and timing can still link activity. Fee: 9 tPOT, taken from your private balance.</PrivacyNote>
                     <PrivacyMeter level={2} label="Fair" title="Private pool activity" detail="50 private transactions so far. Your payment blends in with them." style={{ margin: "0 0 4px" }} />
                   </>
                 )}
@@ -126,7 +126,7 @@ const RequestBody: React.FC = () => {
                 />
                 {paid && <div style={{ marginTop: 12, color: L.accent, fontWeight: 600, fontSize: 13, opacity: appear(frame, PAY + 10, 8) }}>Back to Umbra →</div>}
               </Card>
-              <AccountCard frame={frame} tpot={tpot} pusd="0.0000" popAt={paid ? PAY : undefined} highlight="tpot" />
+              <AccountCard frame={frame} tpot={tpot} pusd="0" popAt={paid ? PAY : undefined} highlight="tpot" />
             </Grid>
           </div>
         )}

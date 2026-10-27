@@ -73,7 +73,7 @@ const ConnectBody: React.FC = () => {
 
   return (
     <AppBox ref={box}>
-      <BrowserFrame active="overview" connecting={connecting} connectRef={refs.connect} account={connected ? { initial: "A", label: "Alice", balance: "1,240.00 tPOT" } : null}>
+      <BrowserFrame active="overview" connecting={connecting} connectRef={refs.connect} account={connected ? { initial: "A", label: "Alice", balance: "1,240 tPOT" } : null}>
         <MiniHero />
         <ConnectPrompt />
       </BrowserFrame>

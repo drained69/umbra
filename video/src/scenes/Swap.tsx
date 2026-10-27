@@ -7,7 +7,7 @@ import { Cursor } from "../components/Cursor";
 import { AppBox, Anchor, useAnchors, useRefs, useApp } from "../components/context";
 import { Card, CardTitle, Hint, PrimaryButton, PrivacyNote, ToolbarLabel } from "../components/ui";
 import { light as L, font, radius } from "../theme";
-import { appear, typed, cursorAt, clickRipple, isPressing, caretOn } from "../anim";
+import { appear, typed, cursorAt, clickRipple, isPressing, caretOn, fmtAmount } from "../anim";
 import { cueLocal } from "../timing.mjs";
 import { ACCOUNT } from "./Account";
 import { AccountCard, MSG, StatusSeq, SubTabs } from "./shared";
@@ -17,10 +17,10 @@ const DONE = cueLocal("swapDone"); // beat 20
 const INPUT = 28;
 const QUOTE = 62;
 const BTN = PROOF - 6;
-const fmt4 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
-// Example quote values (not live data): 10 tPOT → 24.984210 pUSD.
-const OUT = "24.984210";
+// A real quote from the live relayer (/ma/quote, 2026-10-27): 4 tPOT → 3.215426 pUSD, fee 9 tPOT,
+// price impact 2.66%. Live prices move; this is a snapshot.
+const OUT = "3.215426";
 
 export const Swap: React.FC<{ orientation: Orientation }> = ({ orientation }) => (
   <SceneLayout
@@ -37,7 +37,7 @@ export const Swap: React.FC<{ orientation: Orientation }> = ({ orientation }) =>
       { at: DONE + 2, zoom: 1.48, focus: [0.33, 0.88] },
       { at: DONE + 30, zoom: 1.75, focus: [0.78, 0.33] },
     ]}
-    caption={<Caption number="07" label="Private swap" headline="Trade without leaving privacy." support="10 tPOT to pUSD at live exchange prices, inside your private balance." />}
+    caption={<Caption number="07" label="Private swap" headline="Trade without leaving privacy." support="4 tPOT to pUSD at live exchange prices, inside your private balance." />}
   >
     <SwapBody />
   </SceneLayout>
@@ -64,13 +64,13 @@ const SwapBody: React.FC = () => {
   const refs = useRefs(["input", "swap"] as const);
   const pts = useAnchors(box, refs);
 
-  const amount = typed("10", frame, INPUT + 4, INPUT + 14);
+  const amount = typed("4", frame, INPUT + 4, INPUT + 10);
   const quoted = frame >= QUOTE;
   const done = frame >= DONE;
   const k = interpolate(frame, [DONE, DONE + 30], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const tpot = fmt4(34.925 - 10.05 * k);
-  const pusd = fmt4(24.98421 * k);
-  const avail = done ? "24.8750" : "34.9250";
+  const tpot = fmtAmount(17 - 13 * k); // 4 sold + 9 relayer fee
+  const pusd = fmtAmount(3.215426 * k);
+  const avail = done ? "4" : "17";
 
   const pos = cursorAt(frame, portrait ? [620, 1150] : [980, 820], [
     { start: 4, end: INPUT - 2, to: "input" },
@@ -78,10 +78,10 @@ const SwapBody: React.FC = () => {
   ], pts);
 
   const rows: [string, string, boolean?][] = [
-    ["Rate", "1 tPOT ≈ 2.4984 pUSD"],
-    ["Relayer fee", "0.0500 tPOT"],
-    ["Total from your private balance", "10.0500 tPOT"],
-    ["Price impact", "0.42%"],
+    ["Rate", "1 tPOT ≈ 0.80386 pUSD"],
+    ["Relayer fee", "9 tPOT"],
+    ["Total from your private balance", "13 tPOT"],
+    ["Price impact", "2.66%"],
   ];
 
   return (

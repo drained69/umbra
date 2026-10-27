@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { interpolate, useCurrentFrame } from "remotion";
+import { useCurrentFrame } from "remotion";
 import { BrowserFrame, Grid, PageHeading } from "../components/BrowserFrame";
 import { SceneLayout, type Orientation } from "../components/Stage";
 import { Caption } from "../components/Caption";
@@ -7,7 +7,7 @@ import { Cursor } from "../components/Cursor";
 import { AppBox, Anchor, useAnchors, useRefs, useApp } from "../components/context";
 import { Card, CardTitle, Hint, Label, Field, PrimaryButton, PrivacyNote, ToolbarLabel } from "../components/ui";
 import { light as L, font } from "../theme";
-import { typed, cursorAt, clickRipple, isPressing, caretOn } from "../anim";
+import { typed, cursorAt, clickRipple, isPressing, caretOn, glide } from "../anim";
 import { cueLocal } from "../timing.mjs";
 import { ACCOUNT } from "./Account";
 import { AccountCard, ChipRow, MSG, StatusSeq, SubTabs } from "./shared";
@@ -20,7 +20,6 @@ const MEMO = 84;
 const BTN = PROOF - 6;
 
 export const RECIPIENT = "umbra-addr-k2m8…r4vd"; // placeholder recipient (Bob), not a real address
-const fmt4 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
 export const Send: React.FC<{ orientation: Orientation }> = ({ orientation }) => (
   <SceneLayout
@@ -54,7 +53,8 @@ const SendBody: React.FC = () => {
   const memo = typed("Rent for May", frame, MEMO + 4, MEMO + 26);
   const isPrivate = to.length > 12;
   const sent = frame >= SUBMIT;
-  const tpot = fmt4(interpolate(frame, [SUBMIT, SUBMIT + 30], [50, 37.4375], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  // 12.5 tPOT + the live relayer fee (9 tPOT, from the relayer's /status) leave the private balance
+  const tpot = glide(frame, SUBMIT, SUBMIT + 30, 50, 28.5);
   const focusOn = (start: number, end: number) => frame >= start && frame < end;
 
   const pos = cursorAt(frame, portrait ? [620, 1200] : [1000, 900], [
@@ -94,7 +94,7 @@ const SendBody: React.FC = () => {
                 <ToolbarLabel style={{ marginTop: 14, marginBottom: 8 }}>Pay from</ToolbarLabel>
                 <ChipRow items={[`Private balance (${tpot} tPOT)`, "Wallet"]} active={0} />
                 <PrivacyNote>Hidden: who receives and how much.</PrivacyNote>
-                <PrivacyNote style={{ marginTop: 0 }}>Umbra's relayer submits this transaction, so your wallet does not sign it. Withdrawal addresses and amounts remain public, and timing can still link activity. Fee: 0.0625 tPOT, taken from your private balance.</PrivacyNote>
+                <PrivacyNote style={{ marginTop: 0 }}>Umbra's relayer submits this transaction, so your wallet does not sign it. Withdrawal addresses and amounts remain public, and timing can still link activity. Fee: 9 tPOT, taken from your private balance.</PrivacyNote>
               </>
             )}
             <div style={{ marginTop: 6 }}>
@@ -112,7 +112,7 @@ const SendBody: React.FC = () => {
               ]}
             />
           </Card>
-          <AccountCard frame={frame} tpot={tpot} pusd="0.0000" popAt={sent ? SUBMIT : undefined} highlight="tpot" />
+          <AccountCard frame={frame} tpot={tpot} pusd="0" popAt={sent ? SUBMIT : undefined} highlight="tpot" />
         </Grid>
       </BrowserFrame>
       {frame < BTN + 14 && (

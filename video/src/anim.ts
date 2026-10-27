@@ -21,11 +21,16 @@ export const riseIn = (frame: number, fps: number, start: number, distance = 20)
   return { opacity: appear(frame, start, 10), y: interpolate(s, [0, 1], [distance, 0]) };
 };
 
-// Count a number up from 0 to `to` between [start, end], formatted to `dp` decimals.
-export const countUp = (frame: number, start: number, end: number, to: number, dp = 2) => {
-  const v = interpolate(frame, [start, end], [0, to], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
-};
+// Amounts exactly as the app shows them (finance.ts fmt: up to `max` decimals, no padding).
+export const fmtAmount = (v: number, max = 4) => v.toLocaleString(undefined, { maximumFractionDigits: max });
+
+// Count a number up from 0 to `to` between [start, end], formatted like the app.
+export const countUp = (frame: number, start: number, end: number, to: number, dp = 4) =>
+  fmtAmount(interpolate(frame, [start, end], [0, to], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }), dp);
+
+// Glide an amount from `from` to `to` between [start, end], formatted like the app.
+export const glide = (frame: number, start: number, end: number, from: number, to: number, dp = 4) =>
+  fmtAmount(interpolate(frame, [start, end], [from, to], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }), dp);
 
 // Ease a cursor from A to B over [start, end] (easeInOut).
 export const moveCursor = (

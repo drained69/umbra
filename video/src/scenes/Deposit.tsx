@@ -49,7 +49,7 @@ const DepositBody: React.FC = () => {
 
   const amount = typed("50", frame, FIELD + 6, FIELD + 20);
   const done = frame >= CONFIRM;
-  const bal = done ? countUp(frame, CONFIRM, CONFIRM + 34, 50, 4) : "0.0000";
+  const bal = done ? countUp(frame, CONFIRM, CONFIRM + 34, 50) : "0";
   const txns = done ? 49 : 48; // example pool activity
 
   const pos = cursorAt(frame, portrait ? [600, 1150] : [980, 760], [
@@ -64,13 +64,13 @@ const DepositBody: React.FC = () => {
         <PrivacyNav />
         <PageHeading title="Private balance" description="Add funds, pay other private addresses and withdraw, without exposing your wallet." />
         <Grid>
-          <AccountCard frame={frame} tpot={bal} pusd="0.0000" popAt={done ? CONFIRM : undefined} highlight="tpot" />
+          <AccountCard frame={frame} tpot={bal} pusd="0" popAt={done ? CONFIRM : undefined} highlight="tpot" />
           <Card>
             <CardTitle>Move private funds</CardTitle>
             <Hint>Deposit any amount, send to another private address, or withdraw to any wallet. Deposits are signed by your wallet. For sends and withdrawals, choose a relayer or submit from your wallet.</Hint>
             <PrivacyMeter level={2} label="Fair" title="Private pool activity" detail={`${txns} private transactions so far. Your payment blends in with them.`} />
             <ChipRow items={["Deposit", "Send privately", "Withdraw"]} active={0} />
-            <ChipRow items={[`tPOT · ${bal}`, "pUSD · 0.0000"]} active={0} style={{ marginTop: 12 }} />
+            <ChipRow items={[`tPOT · ${bal}`, "pUSD · 0"]} active={0} style={{ marginTop: 12 }} />
             <Label style={{ marginTop: 16 }}>Amount in tPOT</Label>
             <Anchor r={refs.amount} block>
               <Field value={amount} placeholder="1.0" focused={frame >= FIELD && frame < BTN} caret={frame >= FIELD && frame < BTN && caretOn(frame)} />

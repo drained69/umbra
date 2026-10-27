@@ -9,7 +9,7 @@ import { appear, countUp } from "../anim";
 import { cueLocal } from "../timing.mjs";
 
 const PING = cueLocal("resultPing"); // beat 6
-const BOB = { initial: "B", label: "Bob", balance: "312.40 tPOT" }; // example recipient account
+const BOB = { initial: "B", label: "Bob", balance: "312.4 tPOT" }; // example recipient account
 
 export const Result: React.FC<{ orientation: Orientation }> = ({ orientation }) => (
   <SceneLayout
@@ -83,16 +83,16 @@ const ResultBody: React.FC = () => {
   const { fps } = useVideoConfig();
   const arrived = frame >= PING;
   const pop = arrived ? spring({ frame: frame - PING, fps, config: { damping: 12, mass: 0.6 } }) : 0;
-  const priv = arrived ? countUp(frame, PING, PING + 24, 12.5, 4) : null;
+  const priv = arrived ? countUp(frame, PING, PING + 24, 12.5) : null;
 
   return (
     <BrowserFrame active="wallet" account={BOB}>
       <PageHeading title="Wallet" description="Your balances, ways to get paid, and the people you pay." />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 16, marginBottom: 16 }}>
-        <Tile label="tPOT balance"><Amount v="312.4000" unit="tPOT" /></Tile>
-        <Tile label="pUSD balance"><Amount v="0.0000" unit="pUSD" /></Tile>
+        <Tile label="tPOT balance"><Amount v="312.4" unit="tPOT" /></Tile>
+        <Tile label="pUSD balance"><Amount v="0" unit="pUSD" /></Tile>
         <Tile label="Private balances" highlight glow={arrived ? interpolate(pop, [0, 1], [10, 0]) : 0}>
-          {priv === null ? <Amount v="Scanning…" unit="" /> : <><Amount v={priv} unit="tPOT" /><Amount v="0.0000" unit="pUSD" /></>}
+          {priv === null ? <Amount v="Scanning…" unit="" /> : <><Amount v={priv} unit="tPOT" /><Amount v="0" unit="pUSD" /></>}
         </Tile>
       </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
@@ -126,7 +126,7 @@ const ResultBody: React.FC = () => {
               >
                 <span style={{ padding: "3px 8px", borderRadius: 999, background: L.accentSoft, color: L.accentInk, fontSize: 11.5, fontWeight: 700 }}>private</span>
                 <span style={{ flex: 1, color: L.ink }}>Rent for May</span>
-                <strong style={{ color: L.ink }}>+12.5000 tPOT</strong>
+                <strong style={{ color: L.ink }}>+12.5 tPOT</strong>
               </div>
             </>
           )}
