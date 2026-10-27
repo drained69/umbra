@@ -28,7 +28,15 @@ export const PrivacyNav: React.FC<{ active?: number }> = ({ active = 0 }) => (
 export const Account: React.FC<{ orientation: Orientation }> = ({ orientation }) => (
   <SceneLayout
     orientation={orientation}
-    pushIn={{ start: BAL, end: BAL + 50, to: 1.3, focus: orientation === "portrait" ? [0.5, 0.4] : [0.3, 0.52] }}
+    camera={[
+      { at: 0, zoom: 1 },
+      { at: 42, zoom: 1 },
+      { at: 78, zoom: 1.42, focus: [0.3, 0.52] },
+      { at: BAL - 4, zoom: 1.42, focus: [0.3, 0.52] },
+      { at: BAL + 22, zoom: 1.7, focus: [0.29, 0.44] },
+      { at: BAL + 75, zoom: 1.7, focus: [0.29, 0.44] },
+      { at: BAL + 105, zoom: 1.55, focus: [0.78, 0.47] },
+    ]}
     caption={<Caption number="03" label="Private account" headline="One spend key is all it takes." support="A private address and a private balance in tPOT and pUSD." />}
   >
     <AccountBody />

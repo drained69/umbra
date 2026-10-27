@@ -8,6 +8,7 @@ import type { Wallet } from "../lib/wallet";
 import PrivateAccountCard from "./PrivateAccountCard";
 import QrCode from "./QrCode";
 import CopyButton from "./CopyButton";
+import { MA } from "../lib/multi";
 
 interface Props {
   wallet: Wallet;
@@ -56,8 +57,8 @@ export default function WalletPanel({ wallet, onNavigate }: Props) {
       <div className="balance-strip">
         <div><span className="balance-label">{NATIVE} balance</span><strong>{pub ? fmt(pub.native, pub.nativeDecimals, 4) : balanceError ? "Unavailable" : "…"} <small>{NATIVE}</small></strong></div>
         {PUSD && <div><span className="balance-label">pUSD balance</span><strong>{pub?.pusd != null ? fmt(pub.pusd, PUSD.decimals, 4) : balanceError ? "Unavailable" : "…"} <small>pUSD</small></strong></div>}
-        <div><span className="balance-label">Private balance</span>{pa.owner
-          ? <strong>{pa.balance === null ? "…" : fmt(pa.balance, 18, 4)} <small>{NATIVE}</small></strong>
+        <div><span className="balance-label">Private balances</span>{pa.owner
+          ? <div className="wallet-private-balances"><strong>{pa.balance === null ? pa.error ? "Unavailable" : "…" : fmt(pa.balance, 18, 4)} <small>{NATIVE}</small></strong>{MA?.assets.filter((asset) => asset.id !== 0).map((asset) => <strong key={asset.id}>{pa.balance === null ? pa.error ? "Unavailable" : "…" : fmt(pa.maBalances.get(BigInt(asset.id)) ?? 0n, asset.decimals, 4)} <small>{asset.symbol}</small></strong>)}</div>
           : <><strong><small>{pa.locked ? "Locked" : "Not set up"}</small></strong><button className="text-button" onClick={() => document.getElementById("private-account")?.scrollIntoView({ behavior: "smooth", block: "center" })}>{pa.locked ? "Unlock with your passcode" : "Set up a private account"}</button></>}</div>
       </div>
 

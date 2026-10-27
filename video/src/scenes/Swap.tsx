@@ -26,7 +26,17 @@ export const Swap: React.FC<{ orientation: Orientation }> = ({ orientation }) =>
   <SceneLayout
     orientation={orientation}
     height={{ landscape: 960, portrait: 1300 }}
-    pushIn={{ start: DONE, end: DONE + 46, to: 1.28, focus: orientation === "portrait" ? [0.5, 0.88] : [0.77, 0.32] }}
+    camera={[
+      { at: 0, zoom: 1 },
+      { at: 18, zoom: 1 },
+      { at: INPUT + 10, zoom: 1.45, focus: [0.33, 0.5] },
+      { at: QUOTE + 4, zoom: 1.45, focus: [0.33, 0.52] },
+      { at: QUOTE + 34, zoom: 1.42, focus: [0.33, 0.68] },
+      { at: BTN - 4, zoom: 1.42, focus: [0.33, 0.8] },
+      { at: PROOF + 14, zoom: 1.48, focus: [0.33, 0.88] },
+      { at: DONE + 2, zoom: 1.48, focus: [0.33, 0.88] },
+      { at: DONE + 30, zoom: 1.75, focus: [0.78, 0.33] },
+    ]}
     caption={<Caption number="07" label="Private swap" headline="Trade without leaving privacy." support="10 tPOT to pUSD at live exchange prices, inside your private balance." />}
   >
     <SwapBody />

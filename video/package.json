@@ -8,7 +8,8 @@
     "studio": "remotion studio",
     "still": "remotion still",
     "render:landscape": "remotion render UmbraDemoLandscape out/umbra-landscape-1920x1080.mp4 --concurrency=6 --video-bitrate=12M --x264-preset=slow --audio-bitrate=320k",
-    "render:portrait": "remotion render UmbraDemoPortrait out/umbra-portrait-1080x1920.mp4 --concurrency=6 --video-bitrate=12M --x264-preset=slow --audio-bitrate=320k"
+    "render:portrait": "remotion render UmbraDemoPortrait out/umbra-portrait-1080x1920.mp4 --concurrency=6 --video-bitrate=12M --x264-preset=slow --audio-bitrate=320k",
+    "render:thumbnail": "remotion still UmbraThumbnail out/umbra-thumbnail-1280x720.png"
   },
   "dependencies": {
     "@remotion/fonts": "^4.0.0",

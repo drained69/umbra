@@ -15,7 +15,15 @@ export const Result: React.FC<{ orientation: Orientation }> = ({ orientation }) 
   <SceneLayout
     orientation={orientation}
     height={{ landscape: 860, portrait: 1180 }}
-    pushIn={{ start: PING + 4, end: PING + 50, to: 1.14, focus: orientation === "portrait" ? [0.5, 0.56] : [0.5, 0.74] }}
+    camera={[
+      { at: 0, zoom: 1 },
+      { at: 22, zoom: 1 },
+      { at: PING - 8, zoom: 1.55, focus: [0.8, 0.31] },
+      { at: PING + 4, zoom: 1.55, focus: [0.8, 0.31] },
+      { at: PING + 28, zoom: 1.62, focus: [0.33, 0.56] },
+      { at: CHAIN_IN - 6, zoom: 1.62, focus: [0.33, 0.56] },
+      { at: CHAIN_IN + 22, zoom: 1.62, focus: [0.78, 0.62] },
+    ]}
     caption={<Caption number="08" label="Received" headline="No trace back to the sender." support="Bob sees 12.5 tPOT and the memo. The chain sees only a verified proof." />}
   >
     <ResultBody />
@@ -43,33 +51,32 @@ const Amount: React.FC<{ v: string; unit: string }> = ({ v, unit }) => (
   </strong>
 );
 
-// Explanatory overlay (a video graphic, styled apart from the app UI).
-const ChainView: React.FC<{ frame: number }> = ({ frame }) => {
-  const rows: [string, string][] = [
-    ["Sender", "hidden"],
-    ["Recipient", "hidden"],
-    ["Amount", "hidden"],
-    ["Memo", "encrypted"],
-    ["Submitted by", "Umbra relayer"],
-    ["Zero-knowledge proof", "verified ✔"],
-  ];
-  const start = PING + 30;
-  return (
-    <div style={{ opacity: appear(frame, start, 10), transform: `translateY(${(1 - appear(frame, start, 12)) * 16}px)`, padding: 22, borderRadius: radius.lg, background: brand.brandDeep, color: "#eaf6ef", border: "1px solid rgba(143,214,177,0.25)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, color: brand.mint, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        <span style={{ width: 7, height: 7, borderRadius: "50%", background: brand.mint }} /> What the chain sees
-      </div>
-      <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-        {rows.map(([k, v], i) => (
-          <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 15, opacity: appear(frame, start + 6 + i * 5, 8) }}>
-            <span style={{ color: "#9fc6b2" }}>{k}</span>
-            <strong style={{ color: i === rows.length - 1 ? brand.mint : "#fff", fontWeight: 700 }}>{v}</strong>
-          </div>
-        ))}
-      </div>
+// Explanatory overlay (a video graphic, styled apart from the app UI). Rows land on the
+// narration: "The chain sees only a verified proof. No sender. No amount. No trace."
+const CHAIN_IN = 140; // local frame; "The chain sees…" starts at 105.2 s
+const CHAIN_ROWS: [string, string, number][] = [
+  ["Zero-knowledge proof", "verified ✔", 172],
+  ["Submitted by", "Umbra relayer", 188],
+  ["Sender", "hidden", 226],
+  ["Recipient", "hidden", 236],
+  ["Amount", "hidden", 259],
+  ["Memo", "encrypted", 272],
+];
+const ChainView: React.FC<{ frame: number }> = ({ frame }) => (
+  <div style={{ opacity: appear(frame, CHAIN_IN, 10), transform: `translateY(${(1 - appear(frame, CHAIN_IN, 12)) * 16}px)`, padding: 22, borderRadius: radius.lg, background: brand.brandDeep, color: "#eaf6ef", border: "1px solid rgba(143,214,177,0.25)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, color: brand.mint, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: brand.mint }} /> What the chain sees
     </div>
-  );
-};
+    <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+      {CHAIN_ROWS.map(([k, v, at], i) => (
+        <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 15, opacity: 0.25 + 0.75 * appear(frame, at, 8) }}>
+          <span style={{ color: "#9fc6b2" }}>{k}</span>
+          <strong style={{ color: i === 0 ? brand.mint : "#fff", fontWeight: 700, opacity: appear(frame, at, 8) }}>{v}</strong>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 const ResultBody: React.FC = () => {
   const frame = useCurrentFrame();

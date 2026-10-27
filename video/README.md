@@ -8,12 +8,23 @@ Built for the Portaldot Hacker House 2026.
 
 ```bash
 npm install
-npm run audio              # regenerate public/audio/soundtrack.wav from src/timing.mjs
+npm run audio              # narration stem, both soundtrack masters and the .srt captions
 npm run render:landscape   # out/umbra-landscape-1920x1080.mp4
 npm run render:portrait    # out/umbra-portrait-1080x1920.mp4
+npm run render:thumbnail   # out/umbra-thumbnail-1280x720.png (YouTube custom thumbnail)
 npm run studio             # scrub the timeline in the browser
 node scripts/stills.mjs UmbraDemoLandscape out/review --sections   # review frames
 ```
+
+Uploading to YouTube: see [`YOUTUBE.md`](YOUTUBE.md) for the title, description, chapters,
+tags, captions and thumbnail.
+
+## Camera
+
+Each scene declares a camera path (`camera={[{ at, zoom, focus }]}` on `SceneLayout`), keyed to
+the same cue frames as the cursor, statuses and SFX. Pushing in moves the app to the centre and
+steps the caption aside; pulling back to zoom 1 brings the caption back. The window is clamped
+so it is only ever cropped by the screen edge. Portrait zooms in place below its caption.
 
 ## One clock for picture and sound
 

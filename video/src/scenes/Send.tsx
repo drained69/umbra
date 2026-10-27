@@ -26,7 +26,16 @@ export const Send: React.FC<{ orientation: Orientation }> = ({ orientation }) =>
   <SceneLayout
     orientation={orientation}
     height={{ landscape: 1080, portrait: 1300 }}
-    pushIn={{ start: SUBMIT, end: SUBMIT + 46, to: 1.28, focus: orientation === "portrait" ? [0.5, 0.86] : [0.76, 0.3] }}
+    camera={[
+      { at: 0, zoom: 1 },
+      { at: 22, zoom: 1 },
+      { at: 50, zoom: 1.45, focus: [0.33, 0.45] },
+      { at: AMT + 18, zoom: 1.45, focus: [0.33, 0.53] },
+      { at: BTN - 14, zoom: 1.42, focus: [0.33, 0.74] },
+      { at: PROOF + 10, zoom: 1.48, focus: [0.33, 0.82] },
+      { at: SUBMIT + 2, zoom: 1.48, focus: [0.33, 0.82] },
+      { at: SUBMIT + 30, zoom: 1.75, focus: [0.78, 0.32] },
+    ]}
     caption={<Caption number="05" label="Pay privately" headline="Your wallet never signs." support="12.5 tPOT to an umbra-addr. A relayer submits it, so nothing links back to you." />}
   >
     <SendBody />

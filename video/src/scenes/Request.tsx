@@ -24,7 +24,19 @@ export const Request: React.FC<{ orientation: Orientation }> = ({ orientation })
   <SceneLayout
     orientation={orientation}
     height={{ landscape: 960, portrait: 1300 }}
-    pushIn={{ start: PAY, end: PAY + 46, to: 1.26, focus: orientation === "portrait" ? [0.5, 0.86] : [0.77, 0.33] }}
+    camera={[
+      { at: 0, zoom: 1 },
+      { at: 12, zoom: 1 },
+      { at: 34, zoom: 1.55, focus: [0.5, 0.23] },
+      { at: LINK + 4, zoom: 1.55, focus: [0.5, 0.23] },
+      { at: OPEN + 24, zoom: 1.38, focus: [0.33, 0.4] },
+      { at: BTN - 4, zoom: 1.42, focus: [0.33, 0.45] },
+      { at: BTN + 26, zoom: 1.42, focus: [0.33, 0.72] },
+      { at: PAY - 4, zoom: 1.42, focus: [0.33, 0.72] },
+      { at: PAY + 16, zoom: 1.52, focus: [0.33, 0.42] },
+      { at: PAY + 50, zoom: 1.52, focus: [0.33, 0.42] },
+      { at: PAY + 80, zoom: 1.3, focus: [0.55, 0.38] }, // confirmation + new balance together
+    ]}
     caption={<Caption number="06" label="Request" headline="Get paid with a link." support="Open a ?pay= link: who, how much, which asset, what for. Then pay privately." />}
   >
     <RequestBody />

@@ -1,6 +1,7 @@
 import React from "react";
 import { Composition } from "remotion";
 import { Movie } from "./Movie";
+import { Thumbnail } from "./Thumbnail";
 import { FPS, TOTAL_FRAMES } from "./timing.mjs";
 
 export const Root: React.FC = () => (
@@ -23,5 +24,6 @@ export const Root: React.FC = () => (
       height={1920}
       defaultProps={{ orientation: "portrait" as const, withAudio: true, voiceover: false }}
     />
+    <Composition id="UmbraThumbnail" component={Thumbnail} durationInFrames={1} fps={FPS} width={1280} height={720} />
   </>
 );

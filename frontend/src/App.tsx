@@ -189,7 +189,7 @@ export default function App() {
     tab === "wallet" ? "Your balances, ways to get paid, and the people you pay."
     : tab === "pay" ? (payParam ? "Someone sent you a payment request." : "Pay anyone, request money, or split a bill.")
     : tab === "swap" ? "Trade tPOT and pUSD on Portaldot's built-in exchange."
-    : tab === "transfer" ? "Add funds, pay other private addresses and withdraw, without exposing your wallet."
+    : tab === "transfer" ? "Add funds, pay private addresses, and withdraw with clear control over what each action reveals."
     : tab === "deposit" ? "Deposit a fixed amount into a shielded pool. Keep the note it creates: it is the only way to withdraw."
     : tab === "withdraw" ? "Withdraw a shielded note to any address. The proof does not reveal which deposit it came from."
     : "Give read-only access to your activity. A viewing key can never move funds.";

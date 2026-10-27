@@ -59,6 +59,8 @@ export function cueFrame(sectionId, beatsFromStart) {
 // choreography on these beats AND the audio script places the matching SFX on them, so
 // picture and sound are locked to the same clock.
 export const CUES = {
+  coverTrace: { section: "cover", beat: 5.9 }, // "…is visible to everyone"
+  coverScramble: { section: "cover", beat: 9.2 }, // "Umbra changes that"
   connectClick: { section: "connect", beat: 3 },
   connectPick: { section: "connect", beat: 10 },
   accountCreate: { section: "account", beat: 6 },
@@ -69,7 +71,7 @@ export const CUES = {
   requestPay: { section: "request", beat: 13 },
   swapProof: { section: "swap", beat: 8 },
   swapDone: { section: "swap", beat: 20 },
-  resultPing: { section: "result", beat: 6 },
+  resultPing: { section: "result", beat: 4 },
 };
 
 // Local frame of a cue within its own section (for scenes rendered inside a Sequence).

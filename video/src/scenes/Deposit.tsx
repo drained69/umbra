@@ -22,7 +22,18 @@ export const Deposit: React.FC<{ orientation: Orientation }> = ({ orientation })
   <SceneLayout
     orientation={orientation}
     height={{ portrait: 1240 }}
-    pushIn={{ start: CONFIRM, end: CONFIRM + 50, to: 1.3, focus: orientation === "portrait" ? [0.5, 0.36] : [0.29, 0.44] }}
+    camera={[
+      { at: 0, zoom: 1 },
+      { at: 18, zoom: 1 },
+      { at: FIELD + 2, zoom: 1.45, focus: [0.78, 0.78] },
+      { at: BTN, zoom: 1.45, focus: [0.78, 0.84] },
+      { at: SHEET - 6, zoom: 1.45, focus: [0.78, 0.88] },
+      { at: SHEET + 18, zoom: 1.55, focus: [0.83, 0.3] },
+      { at: SIGN + 4, zoom: 1.55, focus: [0.83, 0.3] },
+      { at: CONFIRM - 14, zoom: 1.45, focus: [0.78, 0.88] },
+      { at: CONFIRM + 4, zoom: 1.45, focus: [0.78, 0.88] },
+      { at: CONFIRM + 30, zoom: 1.75, focus: [0.29, 0.4] },
+    ]}
     caption={<Caption number="04" label="Shield" headline="Fund your private balance." support="Deposit 50 tPOT. The proof is made in your browser and verified on chain." />}
   >
     <DepositBody />

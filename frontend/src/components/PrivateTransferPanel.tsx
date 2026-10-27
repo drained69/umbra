@@ -28,7 +28,8 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
   const [assetId, setAssetId] = useState(0);
   const asset = MA ? MA.assets.find((a) => a.id === assetId)! : { id: 0, symbol: NATIVE, decimals: 18, address: null };
   const maRelayer = useMaRelayer();
-  const tokenFee = asset.id !== 0 && maRelayer.state === "ready" ? maRelayer.quote.fees[asset.id] : null;
+  const tokenFee = asset.id !== 0 && maRelayer.state === "ready" ? maRelayer.quote.fees[asset.id] ?? null : null;
+  const spendRouteReady = asset.id === 0 ? route.ready : selfSubmit || (maRelayer.state === "ready" && tokenFee !== null);
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; message: string; href?: string } | null>(null);
 
   async function submit() {
@@ -88,19 +89,25 @@ export default function PrivateTransferPanel({ wallet }: { wallet: Wallet }) {
     </div>
     <div className="card">
       <h2>Move private {MA ? "funds" : NATIVE}</h2>
-      <p className="hint">Deposit any amount, send to another private address, or withdraw to any wallet. Your wallet signs only deposits; the relayer submits sends and withdrawals, so they are not linked to you.</p>
+      <p className="hint">Deposit any amount, send to another private address, or withdraw to any wallet. Deposits are signed by your wallet. For sends and withdrawals, choose a relayer or submit from your wallet.</p>
       <PrivatePoolMeter refreshKey={pa.history.length} />
       <div className="denoms">{(["deposit", "send", "withdraw"] as Action[]).map((item) => <button key={item} className={`chip ${action === item ? "active" : ""}`} aria-pressed={action === item} onClick={() => { setAction(item); setStatus(null); }}>{item === "send" ? "Send privately" : item === "deposit" ? "Deposit" : "Withdraw"}</button>)}</div>
-      {MA && <div className="denoms" role="group" aria-label="Asset" style={{ marginTop: 12 }}>{MA.assets.map((a) => <button key={a.id} className={`chip ${assetId === a.id ? "active" : ""}`} aria-pressed={assetId === a.id} onClick={() => { setAssetId(a.id); setAmount(""); }}>{a.symbol}{pa.owner ? ` · ${fmt(pa.maBalances.get(BigInt(a.id)) ?? 0n, a.decimals, 4)}` : ""}</button>)}</div>}
+      {MA && <div className="denoms" role="group" aria-label="Asset" style={{ marginTop: 12 }}>{MA.assets.map((a) => <button key={a.id} className={`chip ${assetId === a.id ? "active" : ""}`} aria-pressed={assetId === a.id} onClick={() => { setAssetId(a.id); setAmount(""); setStatus(null); }}>{a.symbol}{pa.owner ? ` · ${pa.balance === null ? pa.error ? "Unavailable" : "Scanning…" : fmt(a.id === 0 ? pa.balance : pa.maBalances.get(BigInt(a.id)) ?? 0n, a.decimals, 4)}` : ""}</button>)}</div>}
       <label htmlFor="private-amount" style={{ display: "block", marginTop: 16 }}>Amount in {asset.symbol}</label>
       <input id="private-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1.0" />
       {action !== "deposit" && <><label htmlFor="private-recipient">{action === "send" ? "Recipient’s private address" : "Recipient’s 0x address"}</label><textarea id="private-recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={action === "send" ? "umbra-addr-…" : "0x…"} spellCheck={false} autoCapitalize="off" /></>}
       {action === "send" && <><label htmlFor="private-memo">Note (encrypted to the recipient)</label><input id="private-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Rent for May" maxLength={60} /><p className="hint">The recipient, amount and note are encrypted in the pool.</p></>}
       {action === "withdraw" && <p className="hint">The amount and the 0x address are public when they leave the pool. Withdraw to a fresh address that has never been linked to you.</p>}
-      {action !== "deposit" && <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} fee={tokenFee === null ? undefined : `${fmt(tokenFee, asset.decimals, 2)} ${asset.symbol}`} />}
+      {action !== "deposit" && (asset.id === 0 ? <RelayRoute relayer={route.relayer} wallet={wallet} selfSubmit={selfSubmit} onSelfSubmit={setSelfSubmit} /> : <>
+        {!selfSubmit && maRelayer.state === "loading" && <p className="hint">Checking the {asset.symbol} relayer and fee…</p>}
+        {!selfSubmit && maRelayer.state === "down" && <div className="status err" role="alert">The {asset.symbol} relayer is unavailable. You can submit from your wallet, which reveals your account as the sender.</div>}
+        {!selfSubmit && maRelayer.state === "ready" && tokenFee === null && <div className="status err" role="alert">The relayer has no fee quote for {asset.symbol}. Choose wallet submission or try again later.</div>}
+        {!selfSubmit && maRelayer.state === "ready" && tokenFee !== null && <p className="privacy-note private">Umbra's relayer submits this transaction, so your wallet does not sign it. The withdrawal address and amount remain public, and timing can still link activity. Fee: {fmt(tokenFee, asset.decimals, 4)} {asset.symbol}, taken from your private balance.</p>}
+        <label className="check-row"><input type="checkbox" checked={selfSubmit} onChange={(e) => setSelfSubmit(e.target.checked)} />Submit from my wallet instead. My account will be visible as the sender.</label>
+      </>)}
       {action === "withdraw" && asset.id !== 0 && <p className="hint">The receiving account needs a little {NATIVE} first: Portaldot accounts can't hold {asset.symbol} without it.</p>}
       {pa.owner && !pa.backedUp && <p className="hint">Confirm you saved the spend key before moving funds.</p>}
-      <button className="primary" onClick={submit} disabled={!pa.owner || !pa.backedUp || !amount.trim() || (action !== "deposit" && (!recipient.trim() || !route.ready)) || busy}>{busy ? "Working…" : action === "send" ? "Send privately" : action === "deposit" ? "Deposit to private account" : "Withdraw"}</button>
+      <button className="primary" onClick={submit} disabled={!pa.owner || !pa.backedUp || !amount.trim() || (action !== "deposit" && (!recipient.trim() || !spendRouteReady)) || busy}>{busy ? "Working…" : action === "send" ? "Send privately" : action === "deposit" ? "Deposit to private account" : "Withdraw"}</button>
       {status && <div className={`status ${status.kind}`} role={status.kind === "err" ? "alert" : "status"}>{status.message} {status.href && <a href={status.href} target="_blank" rel="noreferrer">View block ↗</a>}</div>}
     </div>
   </div>;

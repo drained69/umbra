@@ -271,6 +271,22 @@ function ping(t0) {
   bell(t0, [88, 93], { gain: 0.22, spacing: 0.09, rev: 0.45 }); // E6 → A6 notification
 }
 
+// cover hook: your wallet traced on a public ledger, then scrambled into hidden notes
+function alert(t0) {
+  [0, 0.16].forEach((d, i) => put(t0 + d, 0.22, (t) => Math.sin(TAU * (i ? 523 : 659) * t) * Math.exp(-t * 14) * Math.min(1, t / 0.005), { gain: 0.12, rev: 0.3 }));
+}
+function glitch(t0, dur = 0.6) {
+  const bp = bandpass();
+  put(t0, dur, (t, k) => {
+    const gate = Math.floor(t * 46) % 3 === 0 ? 0.25 : 1; // stuttering data
+    const crush = Math.round(noise() * 6) / 6;
+    return bp(crush, 900 + 5000 * (t / dur), 1.8) * gate * Math.sin((Math.PI * t) / dur);
+  }, { gain: 0.3, rev: 0.25 });
+}
+alert(at("coverTrace"));
+glitch(at("coverScramble"));
+bell(at("coverScramble") + 18 / FPS, [76, 81, 88], { gain: 0.12, spacing: 0.06, rev: 0.6 });
+
 click(at("connectClick"));
 click(at("connectPick"));
 pop(at("connectPick") + 0.12); // account lands in the header

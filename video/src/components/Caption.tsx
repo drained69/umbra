@@ -13,13 +13,13 @@ export const Caption: React.FC<{
   align?: "left" | "center";
   delay?: number;
   compact?: boolean;
-}> = ({ number, label, headline, support, align = "left", delay = 4, compact = false }) => {
+}> = ({ number, label, headline, support, align = "left", delay = 0, compact = false }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   if (useApp().orientation === "portrait") compact = true;
   const t = spring({ frame: frame - delay, fps, config: { damping: 200, mass: 0.7 } });
   const y = interpolate(t, [0, 1], [26, 0]);
-  const op = interpolate(frame, [delay, delay + 10], [0, 1], { extrapolateRight: "clamp" });
+  const op = interpolate(frame, [delay, delay + 7], [0, 1], { extrapolateRight: "clamp" });
 
   return (
     <div

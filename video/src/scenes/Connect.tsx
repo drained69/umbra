@@ -40,7 +40,16 @@ const ConnectPrompt: React.FC = () => (
 export const Connect: React.FC<{ orientation: Orientation }> = ({ orientation }) => (
   <SceneLayout
     orientation={orientation}
-    pushIn={{ start: PICK + 4, end: PICK + 40, to: 1.25, focus: [0.86, 0.1], release: PICK + 110 }}
+    camera={[
+      { at: 0, zoom: 1 },
+      { at: 18, zoom: 1 },
+      { at: CLICK - 2, zoom: 1.5, focus: [0.9, 0.09] },
+      { at: CLICK + 22, zoom: 1.32, focus: [0.5, 0.5] },
+      { at: PICK - 4, zoom: 1.32, focus: [0.5, 0.5] },
+      { at: PICK + 22, zoom: 1.75, focus: [0.9, 0.09] },
+      { at: PICK + 110, zoom: 1.75, focus: [0.9, 0.09] },
+      { at: PICK + 145, zoom: 1, focus: [0.5, 0.45] },
+    ]}
     caption={<Caption number="02" label="Connect" headline="Self-custody, always." support="Portaldot Extension or MetaMask. Umbra never holds your keys." />}
   >
     <ConnectBody />

@@ -5,7 +5,7 @@ import { SceneLayout, type Orientation } from "../components/Stage";
 import { Caption } from "../components/Caption";
 import { PrivacyMeter } from "../components/ui";
 import { light as L, font, brand, heroGradient, radius } from "../theme";
-import { appear, countUp } from "../anim";
+import { countUp } from "../anim";
 import { useApp } from "../components/context";
 
 const Hero: React.FC = () => {
@@ -26,7 +26,7 @@ const Hero: React.FC = () => {
         color: "#eaf6ef",
       }}
     >
-      <div style={{ maxWidth: 560, opacity: appear(frame, 6, 12) }}>
+      <div style={{ maxWidth: 560 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", border: "1px solid rgba(217,242,228,0.25)", borderRadius: 999, color: "#cdebdc", fontSize: 13, fontWeight: 600, fontFamily: font.body }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: brand.mint, boxShadow: "0 0 0 4px rgba(143,214,177,0.18)" }} />
           Private payments on Portaldot · Testnet
@@ -46,7 +46,7 @@ const Hero: React.FC = () => {
           Deposits into Umbra are public. After that, a relayer submits your private payments, swaps and withdrawals, so they are not linked to your wallet.
         </small>
       </div>
-      {!narrow && <div style={{ display: "grid", placeItems: "center", opacity: appear(frame, 14, 14) }}>
+      {!narrow && <div style={{ display: "grid", placeItems: "center" }}>
         <svg viewBox="0 0 320 320" width="300" height="300" fill="none" style={{ transform: `rotate(${Math.sin(frame / 60) * 3}deg)` }}>
           <defs>
             <linearGradient id="hl" x1="0" y1="1" x2="1" y2="0">
@@ -68,14 +68,20 @@ const Hero: React.FC = () => {
 
 export const Land: React.FC<{ orientation: Orientation }> = ({ orientation }) => {
   const frame = useCurrentFrame();
-  // Pool activity fills from Low to Fair as the scene plays (example: 48 private txns).
-  const fair = frame >= 150;
-  const count = Math.round(Number(countUp(frame, 60, 200, 48, 0).replace(/,/g, "")));
-
+  // Pool activity grows as the scene plays (example: 12 → 48 private transactions). Level and
+  // wording follow privacyLevel() / PrivatePoolMeter in the app: <20 Low, <100 Fair.
+  const count = Math.round(Number(countUp(frame, 40, 200, 36, 0).replace(/,/g, ""))) + 12;
+  const fair = count >= 20;
   return (
     <SceneLayout
       orientation={orientation}
-      pushIn={{ start: 150, end: 300, to: 1.14, focus: orientation === "portrait" ? [0.5, 0.62] : [0.5, 0.86] }}
+      camera={[
+        { at: 0, zoom: 1 },
+        { at: 60, zoom: 1 },
+        { at: 100, zoom: 1.32, focus: [0.36, 0.34] },
+        { at: 175, zoom: 1.32, focus: [0.36, 0.34] },
+        { at: 215, zoom: 1.5, focus: [0.5, 0.83] },
+      ]}
       caption={
         <Caption
           number="01"
@@ -93,11 +99,7 @@ export const Land: React.FC<{ orientation: Orientation }> = ({ orientation }) =>
             level={fair ? 2 : 1}
             label={fair ? "Fair" : "Low"}
             title="Private pool activity"
-            detail={
-              fair
-                ? `${count} private transactions so far. Your payment blends in with them.`
-                : `Only ${count} private transactions so far, so your activity is easier to trace. It gets stronger as more people use Umbra.`
-            }
+            detail={`${count} private transactions so far. Your payment blends in with them.`}
           />
         </div>
       </BrowserFrame>

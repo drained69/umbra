@@ -19,10 +19,10 @@ export function useSpendRoute(wallet: Wallet | null, selfSubmit: boolean) {
 export default function RelayRoute({ relayer, wallet, selfSubmit, onSelfSubmit, fee }: { relayer: RelayerState; wallet: Wallet | null; selfSubmit: boolean; onSelfSubmit: (v: boolean) => void; fee?: string }) {
   if (relayer.state === "loading") return <p className="hint">Checking the relayer…</p>;
   if (relayer.state === "ready" && !selfSubmit) {
-    return <p className="privacy-note private">Submitted by the Umbra relayer: your wallet doesn't sign, so nothing on chain points to you. Relayer fee {fee ?? `${fmt(relayer.quote.fee, 18, 2)} ${NATIVE}`}, paid from your private balance.</p>;
+    return <p className="privacy-note private">Umbra's relayer submits this transaction, so your wallet does not sign it. Withdrawal addresses and amounts remain public, and timing can still link activity. Fee: {fee ?? `${fmt(relayer.quote.fee, 18, 4)} ${NATIVE}`}, taken from your private balance.</p>;
   }
   return <>
     {relayer.state === "down" && <div className="status err" role="alert">The relayer isn't reachable, so private sends are paused rather than exposing your account. {relayer.error}</div>}
-    {wallet && <label className="check-row"><input type="checkbox" checked={selfSubmit} onChange={(e) => onSelfSubmit(e.target.checked)} />Send from my wallet instead. Your account becomes visible as the sender; the recipient and amount stay hidden.</label>}
+    {wallet && <label className="check-row"><input type="checkbox" checked={selfSubmit} onChange={(e) => onSelfSubmit(e.target.checked)} />Submit from my wallet instead. My account will be visible as the sender.</label>}
   </>;
 }

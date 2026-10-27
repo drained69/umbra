@@ -3,6 +3,8 @@ import { format, NATIVE } from "../lib/chain";
 import { usePrivateAccount } from "../lib/privateAccount";
 import { MIN_PASSCODE, passcodeProblem } from "../lib/vault";
 import CopyButton from "./CopyButton";
+import { MA } from "../lib/multi";
+import { fmt } from "../lib/finance";
 
 /** Passcode + confirmation inputs. */
 function PasscodeFields({ value, confirm, onChange, idPrefix }: { value: string; confirm: string; onChange: (v: string, c: string) => void; idPrefix: string }) {
@@ -40,6 +42,8 @@ export default function PrivateAccountCard({ compact = false }: { compact?: bool
     }
   }
   const passProblem = remember ? passcodeProblem(pass, pass2) : null;
+  const privateAssets = MA?.assets.filter((asset) => asset.id !== 0) ?? [];
+  const balanceLabel = pa.balance === null ? (pa.error ? "Unavailable" : "Scanning…") : fmt(pa.balance, 18, 4);
 
   if (!pa.ready) return <div className="notice-card"><span>ⓘ</span><div><strong>Private account unavailable</strong><p>Private accounts have not been set up on this network yet.</p></div></div>;
 
@@ -89,7 +93,16 @@ export default function PrivateAccountCard({ compact = false }: { compact?: bool
         <h2>Private account</h2>
         <button className="text-button" onClick={() => pa.refresh()} disabled={pa.scanning}>{pa.scanning ? "Scanning…" : "Refresh"}</button>
       </div>
-      <p className="big-balance">{pa.balance === null ? "…" : format(pa.balance, 18)} <small>{NATIVE} private</small></p>
+      <div className="private-balance-list" aria-label="Private balances" aria-busy={pa.scanning}>
+        <div className="private-balance-item">
+          <span className="balance-label">{NATIVE} balance</span>
+          <strong>{balanceLabel} <small>{NATIVE}</small></strong>
+        </div>
+        {privateAssets.map((asset) => <div className="private-balance-item" key={asset.id}>
+          <span className="balance-label">{asset.symbol} balance</span>
+          <strong>{pa.balance === null ? (pa.error ? "Unavailable" : "Scanning…") : fmt(pa.maBalances.get(BigInt(asset.id)) ?? 0n, asset.decimals, 4)} <small>{asset.symbol}</small></strong>
+        </div>)}
+      </div>
       {pa.notes.length > 2 && <p className="hint">Spread across {pa.notes.length} notes; one payment can spend up to {format(pa.spendable, 18)} {NATIVE}.</p>}
       {pa.error && <div className="status err" role="alert">{pa.error}</div>}
       {pa.needsPasscode && (
