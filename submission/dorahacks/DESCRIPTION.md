@@ -3,13 +3,13 @@
 **Pay anyone. Hide everything.**
 Umbra is a zero-knowledge privacy layer for payments, payment requests and swaps on Portaldot V3. Deposit once from any Portaldot wallet; from then on you can pay, request money, split bills and swap tPOT ↔ pUSD privately — the chain never learns who paid whom, or how much, and your wallet never signs a private payment.
 
-> 🖼️ Upload image here: 01-cover.png
+![Umbra — pay anyone, hide everything](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/01-cover.png)
 
 | | |
 |---|---|
 | 🌐 **Live app** | https://umbrav1.up.railway.app |
 | 🎬 **Demo video (2 min)** | [YOUTUBE_LINK] |
-| 💻 **Source code** | [GITHUB_LINK] |
+| 💻 **Source code** | https://github.com/drained69/umbra |
 | ⛓️ **Network** | Portaldot V3 testnet (EVM chain ID `420420777`) |
 | 🏁 **Track** | Ecosystem DApps (+ Modular Cloud & Middleware) |
 | 📌 **Status** | Live testnet beta · test tokens only · not independently audited |
@@ -35,7 +35,7 @@ On a public chain, every payment is a permanent public record. Anyone can see wh
 
 For a chain built for payments and commerce, that is a blocker. People will not pay rent, salaries or suppliers on a ledger their landlord, employer and competitors can read. Businesses cannot expose their customers, margins or treasury. Portaldot's own whitepaper lists a **ZKP-based privacy protection suite** for compliant private commercial activity as a goal for the ecosystem.
 
-> 🖼️ Upload image here: 02-problem-public-ledger.png
+![A public ledger where one wallet is traced across every transfer](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/02-problem-public-ledger.png)
 
 *On a public ledger, one wallet can be traced across every transfer it makes.*
 
@@ -63,43 +63,43 @@ All names, addresses and amounts in the screenshots below are example data.
 
 One click creates a private address (`umbra-addr-…`) and a private balance in tPOT and pUSD. A single spend key controls it; you back it up once, and it restores your balance in any browser. It can be remembered locally, encrypted with a passcode (PBKDF2-SHA256, AES-256-GCM).
 
-> 🖼️ Upload image here: 04-private-account.png
+![Private account with a tPOT and pUSD private balance and a shareable private address](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/04-private-account.png)
 
 ### 2 · Deposit once
 
 Your wallet signs the deposit in the Portaldot Extension. The app shows a live **privacy meter** — how many private transactions the pool has, and therefore how much cover you get — with a warning when the crowd is small.
 
-> 🖼️ Upload image here: 05-deposit-one-signature.png
+![Depositing 50 tPOT: the Portaldot Extension asks for the only signature](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/05-deposit-one-signature.png)
 
 ### 3 · Send privately — your wallet never signs
 
 Paste a private address, enter an amount and an optional note. The note is encrypted so only the recipient can read it. The proof is generated in your browser, the relayer submits it, and your wallet is never asked to sign.
 
-> 🖼️ Upload image here: 06-send-privately-relayer.png
+![Sending 12.5 tPOT privately while the relayer submits the proof](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/06-send-privately-relayer.png)
 
 ### 4 · Get paid with a link
 
 Create a payment link or QR code in tPOT or pUSD — nothing is published on chain until it is paid. Your friend opens the `?pay=` link, sees who is asking, how much, which asset and what for, and pays privately in one tap. The payment carries the request ID inside its encrypted note, so your app marks the request paid automatically. Splitting a bill creates one link per person, with shares that add up exactly to the total.
 
-> 🖼️ Upload image here: 07-pay-a-request-link.png
+![A payment request opened from a link and paid privately](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/07-pay-a-request-link.png)
 
 ### 5 · Swap without leaving your private balance
 
 Swap tPOT ↔ pUSD at live prices from Portaldot's built-in exchange (`pallet-asset-conversion`). You see the rate, the relayer fee, the total and the price impact before you confirm. The relayer acts as the counterparty and buys the asset on the exchange in the same atomic transaction, and you receive exactly the quoted amount as a new private note.
 
-> 🖼️ Upload image here: 08-private-swap-quote.png
+![Private swap quote: rate, relayer fee, total and price impact](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/08-private-swap-quote.png)
 
 ### 6 · What the chain sees
 
 The recipient finds the payment and its note in their private balance. The chain sees a verified proof submitted by the relayer — no sender, no recipient, no amount, no note.
 
-> 🖼️ Upload image here: 09-what-the-chain-sees.png
+![The recipient's view and what the chain sees: a verified proof, nothing else](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/09-what-the-chain-sees.png)
 
 ---
 
 ## ⚙️ How it works
 
-> 🖼️ Upload image here: 03-architecture.png
+![How Umbra works: browser prover, relayer, EVM pool and verifier, native runtime batch](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/03-architecture.png)
 
 1. **Notes.** A private balance is a set of encrypted notes. Each note commits to `Poseidon(amount, publicKey, blinding, asset)` and is stored as a leaf in an on-chain Merkle tree. Its contents are encrypted to the owner (x25519 + XChaCha20-Poly1305), so only the owner can find and spend it. Encrypted outputs are padded to a fixed length, so a note with a memo looks the same as one without.
 2. **Proofs.** A join-split transaction spends up to two notes and creates two new ones. The Groth16 circuit (`circuits/multiasset.circom`, ~27.5k constraints) proves the inputs exist and are unspent, that value is conserved per asset, and that the public data cannot be altered. The pool records each spent note's nullifier to prevent double spending.
@@ -252,7 +252,7 @@ Relayer: https://umbra-relayer-production.up.railway.app (`/status`, `/health`).
 - **Ecosystem contribution:** it delivers the ZKP privacy suite Portaldot's whitepaper calls for, as a reusable pool, SDK and relayer the rest of the ecosystem can build on.
 - **User experience:** private payments that feel like a modern payments app — links, QR codes, bill splits and swaps — usable straight from the Portaldot Extension, with honest privacy guidance at every step.
 
-> 🖼️ Upload image here: 10-under-the-hood.png
+![Under the hood: Groth16 proofs, on-chain verification, Poseidon notes, relayer](https://raw.githubusercontent.com/drained69/umbra/90ffc2079b59806e8d9f925b6d48e9608785bda8/submission/dorahacks/images/10-under-the-hood.png)
 
 **Try it now: https://umbrav1.up.railway.app**
 
