@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import express from "express";
@@ -14,8 +14,8 @@ const iface = new ethers.Interface(["event NewCommitment(uint256 indexed commitm
 async function fixture(t: any) {
   const directory = mkdtempSync(join(tmpdir(), "umbra-checkout-test-"));
   const owner = new Keypair(); let finalized = 10; let logs: any[] = [];
-  const options = { directory, chainId: 31337, pool, asset: { id: 1, decimals: 6, symbol: "pUSD" }, finalized: async () => finalized, logs: async () => logs };
-  const app = express(); app.use(express.json()); app.use(checkoutRouter(options));
+  const options = { directory, chainId: 31337, pool, cooldownMs: 0, readTimeoutMs: 100, asset: { id: 1, decimals: 6, symbol: "pUSD" }, finalized: async () => finalized, logs: async (_from: number, _to: number) => logs };
+  const app = express(); app.use(checkoutRouter(options));
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>(resolve => server.once("listening", resolve));
   t.after(() => { server.close(); rmSync(directory, { recursive: true, force: true }); });
@@ -90,4 +90,60 @@ test("invalid addresses, prices and oversized delivery are rejected", async t =>
   for (const changes of [{ amount: "0" }, { amount: "-1" }, { amount: "1.0000001" }, { to: "umbra-addr-fake" }, { delivery: "x".repeat(6001) }]) {
     assert.equal((await f.request("/products", { ...f.input, ...changes })).status, 400);
   }
+});
+
+test("a failed persistence write never unlocks an in-memory payment; retry recovers", async t => {
+  const f = await fixture(t); f.setChain([f.log()]);
+  const blocked = join(f.options.directory, "checkout.json.tmp"); mkdirSync(blocked);
+  assert.equal((await f.request(`/orders/${f.order.id}/verify`, {})).status, 503);
+  assert.equal((await (await f.request(`/orders/${f.order.id}`)).json()).status, "awaiting");
+  assert.equal((await f.request(`/orders/${f.order.id}/download`)).status, 403);
+  rmSync(blocked, { recursive: true });
+  assert.equal((await (await f.request(`/orders/${f.order.id}/verify`, {})).json()).status, "paid");
+});
+test("failed product creation does not publish an unsaved storefront", async t => {
+  const f = await fixture(t);
+  mkdirSync(join(f.options.directory, "checkout.json.tmp"));
+  assert.equal((await f.request("/products", { ...f.input, name: "Unsaved" })).status, 503);
+  rmSync(join(f.options.directory, "checkout.json.tmp"), { recursive: true });
+  assert.equal((await f.request("/products", { ...f.input, name: "Saved" })).status, 201);
+});
+test("old abandoned orders cannot delay verification of a new buyer's order", async t => {
+  const f = await fixture(t); f.setChain([], 50000);
+  const recent = await (await f.request(`/products/${f.merchant.product.id}/orders`, {})).json();
+  let scannedFrom = 0;
+  f.options.logs = async (from, _to) => { scannedFrom = from; return [f.log(recent.commitment, recent.encryptedOutput, 50001)]; };
+  f.setChain([], 50002);
+  assert.equal((await (await f.request(`/orders/${recent.id}/verify`, {})).json()).status, "paid");
+  assert.equal(scannedFrom, 50000);
+  assert.equal((await (await f.request(`/orders/${f.order.id}`)).json()).status, "awaiting");
+});
+test("timed-out RPC reads release the scan lock and can be retried", async t => {
+  const f = await fixture(t); f.setChain([f.log()]);
+  f.options.readTimeoutMs = 15;
+  f.options.logs = () => new Promise(() => {});
+  assert.equal((await f.request(`/orders/${f.order.id}/verify`, {})).status, 503);
+  f.options.logs = async () => [f.log()];
+  assert.equal((await (await f.request(`/orders/${f.order.id}/verify`, {})).json()).status, "paid");
+});
+test("concurrent verification and order creation retain both records", async t => {
+  const f = await fixture(t); f.setChain([f.log()]);
+  let unblock!: () => void; const wait = new Promise<void>(r => { unblock = r; });
+  let started!: () => void; const entered = new Promise<void>(r => { started = r; });
+  f.options.logs = async () => { started(); await wait; return [f.log()]; };
+  const verification = f.request(`/orders/${f.order.id}/verify`, {});
+  await entered;
+  const newOrder = await (await f.request(`/products/${f.merchant.product.id}/orders`, {})).json();
+  unblock(); assert.equal((await (await verification).json()).status, "paid");
+  assert.equal((await (await f.request(`/orders/${newOrder.id}`)).json()).status, "awaiting");
+});
+test("full-length Unicode products fit the documented limit", async t => {
+  const f = await fixture(t);
+  assert.equal((await f.request("/products", { ...f.input, delivery: "界".repeat(6000) })).status, 201);
+});
+test("checkout rate limiting returns an actionable retry header", async t => {
+  const f = await fixture(t);
+  let response: Response | undefined;
+  for (let i = 0; i < 60; i++) response = await f.request(`/products/${f.merchant.product.id}`);
+  assert.equal(response!.status, 429); assert.equal(response!.headers.get("Retry-After"), "60");
 });

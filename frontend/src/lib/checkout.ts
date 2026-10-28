@@ -5,7 +5,12 @@ export type CheckoutProduct = { id: string; name: string; description: string; a
 export type CheckoutOrder = { id: string; productId: string; created: number; status: "awaiting" | "paid"; blinding: string; commitment: string; encryptedOutput: string; block?: number };
 export type Merchant = { product: CheckoutProduct; token: string };
 export const merchantKey = storeKey("checkout-merchants");
-export const merchants = () => readStored<Merchant[]>(merchantKey, []);
+export const merchants = (): Merchant[] => {
+  const stored = readStored<unknown>(merchantKey, []);
+  return Array.isArray(stored) ? stored.filter((m): m is Merchant =>
+    /^[a-f0-9]{64}$/.test(m?.product?.id ?? "") && /^[a-f0-9]{64}$/.test(m?.token ?? "") && typeof m?.product?.name === "string"
+  ) : [];
+};
 export function saveMerchant(m: Merchant) { writeStored(merchantKey, [...merchants().filter(x => x.product.id !== m.product.id), m]); }
 export const checkoutUrl = (id: string) => `${location.origin}${location.pathname}?checkout=${id}`;
 export async function checkoutApi<T>(path: string, body?: unknown, token?: string): Promise<T> {
@@ -17,6 +22,7 @@ export async function checkoutApi<T>(path: string, body?: unknown, token?: strin
   });
   const data = await r.json().catch(() => null);
   if (!r.ok) throw new Error(data?.error || "Checkout server is unavailable. Please retry.");
+  if (data === null) throw new Error("Checkout returned an unreadable response. Please retry.");
   return data;
 }
 export async function downloadOrder(id: string) {

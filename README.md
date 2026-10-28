@@ -1,19 +1,20 @@
 # Umbra
 
-**A testnet zero-knowledge privacy layer for payments, requests and swaps on Portaldot V3.**
+**A testnet zero-knowledge privacy layer for payments, merchant checkout and swaps on Portaldot V3.**
 
-Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool. Users can deposit tPOT or pUSD, pay private addresses, request and split payments, swap assets within their private balance, and withdraw. The browser generates zero-knowledge proofs that Portaldot verifies on chain. By default, the relayer submits private spends without a wallet signature; **deposits still reveal the depositor, asset and amount, while withdrawals reveal the destination and amount**. See the [privacy model](#privacy-model) before using it.
+Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool. Users can deposit tPOT or pUSD, pay private addresses, request and split payments, swap assets within their private balance, and withdraw. Merchants can sell digital products through Umbra Checkout: a hosted pUSD storefront with an order dashboard and downloads gated by finalized payment verification.
+
+The browser generates zero-knowledge proofs that Portaldot verifies on chain. By default, the relayer submits private spends without a wallet signature; **deposits still reveal the depositor, asset and amount, while withdrawals reveal the destination and amount**. See the [privacy model](#privacy-model) before using it.
 
 | | |
 |---|---|
 | **Live app** | [umbrav1.up.railway.app](https://umbrav1.up.railway.app/) |
-| **Demo** | [Two-minute video](https://www.youtube.com/watch?v=hMTj8YFXGWM) · [Pitch deck](submission/dorahacks/pitch-deck/Umbra-Pitch-Deck.pdf) |
+| **Merchant checkout** | [Create a storefront](https://umbrav1.up.railway.app/?merchant=1) · [Integration guide](docs/CHECKOUT.md) |
+| **Demo** | [Two-minute video](https://www.youtube.com/watch?v=hMTj8YFXGWM) |
 | **Network** | Portaldot V3 testnet (EVM chain ID `420420777`) |
 | **Status** | Testnet beta with valueless test assets; internally reviewed, not independently audited |
 
-<p align="center">
-  <img src="submission/dorahacks/images/08-private-swap-quote.png" alt="Umbra private swap: quote, relayer fee and price impact shown before confirming" width="860">
-</p>
+
 
 ---
 
@@ -25,15 +26,16 @@ Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool
 4. [How it works](#how-it-works)
 5. [Why Portaldot V3](#why-portaldot-v3)
 6. [Using the app](#using-the-app)
-7. [Deployed contracts](#deployed-contracts)
-8. [Development](#development)
-9. [Running the relayer](#running-the-relayer)
-10. [Testing and verification](#testing-and-verification)
-11. [Costs and units](#costs-and-units)
-12. [Security and limitations](#security-and-limitations)
-13. [Roadmap](#roadmap)
-14. [Repository layout](#repository-layout)
-15. [License](#license)
+7. [Umbra Checkout](#umbra-checkout)
+8. [Deployed contracts](#deployed-contracts)
+9. [Development](#development)
+10. [Running the relayer](#running-the-relayer)
+11. [Testing and verification](#testing-and-verification)
+12. [Costs and units](#costs-and-units)
+13. [Security and limitations](#security-and-limitations)
+14. [Roadmap](#roadmap)
+15. [Repository layout](#repository-layout)
+16. [License](#license)
 
 ---
 
@@ -43,6 +45,7 @@ Umbra is a testnet app, SDK and relayer built around a multi-asset shielded pool
 |---|---|
 | Multi-asset private pool and Groth16 verifier | Deployed on Portaldot V3 testnet; supports tPOT and pUSD |
 | Web app and relayer | Live on Railway; the app supports native Portaldot and EVM wallets |
+| Umbra Checkout | Live on Railway with persistent order storage; pUSD storefronts, merchant dashboard, verified text downloads |
 | Private swap | Executed on testnet in block 215,680 through one atomic native batch |
 | Fixed-size pools and first-version shielded pool | Deployed; earlier notes remain withdrawable |
 | WASM coprocessor | Built, tested and dry-run on testnet; **not deployed** |
@@ -150,6 +153,36 @@ You need a supported Portaldot Extension account or an EVM wallet connected to P
 
 The relayer charges a fee per private transaction, taken from the private balance (see [Costs](#costs-and-units)).
 
+## Umbra Checkout
+
+[Open the merchant dashboard](https://umbrav1.up.railway.app/?merchant=1), or choose **Pay → Checkout** in the app. A public wallet connection is not required to create a storefront.
+
+### Sell a digital product
+
+1. Enter a product name, description, pUSD price and your private receiving address.
+2. Add the text to deliver after payment, or select **Use sample product** to load *Umbra Field Notes*.
+3. Create the checkout and **download the merchant backup**. This restores dashboard access; back up the private account's spending key separately to recover funds.
+4. Share the hosted link or QR code. The generated HTML button can be embedded in another website.
+5. Refresh **Orders** to verify payments. Receive the pUSD directly in your existing private account.
+
+### Buy and recover a purchase
+
+Buyers can pay from a funded private pUSD balance or connect a wallet. The checkout shows the private-payment total including the relayer fee; wallet payments require tPOT for network fees. Save the order recovery link before leaving. The app polls for verification, and the download unlocks only when the server finds the exact payment note and its valid merchant-encrypted ciphertext in finalized pool events.
+
+If a wallet or network request fails, **Check payment status** before retrying a payment. A recovery link can reopen the order and retrieve its paid download. Anyone holding that link has access to the purchase, so keep it private.
+
+| Included today | Current boundary |
+|---|---|
+| Hosted storefront, QR code and HTML link button | One immutable product per checkout; create a new checkout to change its price |
+| Private-balance or wallet-funded payments | Portaldot V3 testnet pUSD only |
+| Verified delivery | `.txt` download, up to 6,000 characters; no arbitrary file uploads |
+| Merchant order dashboard and backup restoration | Backup grants dashboard access, not spending power |
+| Persistent order storage | One relayer replica with a persistent volume; not a multi-replica database |
+
+The merchant and checkout operator can see the product, price, receiving address and order payment note. The operator hosts the download and can withhold delivery. This is **not** an escrow, refund system or privacy guarantee against the operator. No new smart contract is required: checkout uses the deployed multi-asset pool.
+
+See [the checkout integration guide](docs/CHECKOUT.md) for API routes, verification mechanics, deployment and trust assumptions, and [the checkout review](docs/CHECKOUT_AUDIT.md) for audit scope and regression coverage.
+
 ## Deployed contracts
 
 Every contract Umbra deploys on Portaldot V3 testnet is listed here, with its address and the transaction that created it. All ten have deployed code on chain. The source of truth is [`deployments/testnet.json`](deployments/testnet.json), which the app reads directly.
@@ -228,6 +261,7 @@ The relayer ([`relayer/`](relayer)) submits private spends without a user-wallet
 | `GET /status` | Relayer address, supported pools, per-asset fees |
 | `GET /ma/quote?sell=&buy=&amountIn=` | Price for a private swap |
 | `POST /ma/transact` | Submit a private payment or withdrawal, or execute a private swap |
+| `/checkout/*` | Storefronts, merchant orders, finalized payment verification and gated downloads; [API reference](docs/CHECKOUT.md#api) |
 | `POST /transact`, `POST /withdraw` | First-version private pool and fixed pools (EVM key) |
 
 | Variable | Purpose |
@@ -238,11 +272,16 @@ The relayer ([`relayer/`](relayer)) submits private spends without a user-wallet
 | `RELAYER_FEE_SHIELDED` | Fee per private transaction in tPOT (default 9; the pUSD fee follows the exchange price) |
 | `RELAYER_SWAP_SPREAD_BPS` | Spread kept on swap quotes (default 50 = 0.5%) |
 | `RELAYER_CORS_ORIGIN` | The app's origin |
+| `CHECKOUT_DATA_DIR` | Persistent checkout directory, e.g. `/data/checkout`; empty disables checkout |
 
 ```bash
 docker build -f relayer.Dockerfile -t umbra-relayer .
 docker run -e NETWORK=testnet -e RELAYER_SEED="…" -e RELAYER_CORS_ORIGIN=https://umbrav1.up.railway.app -p 8080:8080 umbra-relayer
 ```
+
+**Enable checkout:** mount a persistent volume at `/data`, set `CHECKOUT_DATA_DIR=/data/checkout`, and keep the relayer at one replica. The Docker entrypoint gives the Node user access to that directory. Back up the volume; it contains orders and product content. Checkout permits 60 requests and 10 creations per minute per observed client IP, separately from transaction relaying. Reverse proxies can cause several clients to share that allowance.
+
+**Frontend configuration:** build with `VITE_RELAYER_URL=https://umbra-relayer-production.up.railway.app` (or your own relayer URL). Vite embeds this at build time; changing only the server runtime variable does not update an already-built frontend.
 
 Fund the relayer account with tPOT for fees and swap float, and with some pUSD to fill pUSD → tPOT swaps. Keep `RELAYER_SEED` in the host's secret settings only. Proof-bound recipient and fee terms prevent the relayer from redirecting funds or increasing its fee after a proof is made; it can still censor or delay transactions, observe network metadata, and set swap quotes. Users can self-submit supported spends at the cost of exposing their wallet as the submitter.
 
@@ -257,7 +296,7 @@ Fund the relayer account with tPOT for fees and swap float, and with some pUSD t
 | Real costs | Deploy cost and per-operation storage deposits from live dry-runs | `make estimate`, `make measure` |
 | Proving keys ↔ verifiers | SHA-256 pinned in `sdk/artifacts/MANIFEST.json` | `node circuits/scripts/manifest.js --check` |
 | SDK and app | Typecheck and production build | `make check` |
-| Checkout | 8 adversarial and persistence tests; real-proof purchase, gated download and merchant spend on Anvil | `cd relayer && npm run test:checkout`, `make e2e` |
+| Checkout | 15 adversarial, concurrency, outage and persistence tests; real-proof purchase, gated download and merchant spend on Anvil | `cd relayer && npm run test:checkout`, `make e2e` |
 
 These run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the live suites are informative rather than blocking.
 
@@ -275,6 +314,7 @@ These run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the li
 - **Network privacy.** The relayer and RPC providers can observe IP addresses, timing and request metadata. Umbra does not hide those network-layer signals.
 - **Anonymity set.** Privacy depends on how many people use the pool. Timing, amounts and a small crowd can link activity.
 - **Swap amounts** are visible on the exchange, though not linked to the trader.
+- **Checkout delivery.** The operator knows order details and hosts the product. Order links are bearer capabilities. There are no automatic refunds or contract-enforced protection against paying the same order twice; verify status before retrying an ambiguous transaction.
 - **Client storage.** The spend key and request history live in the browser; losing the spend key without a backup loses the balance.
 
 Threat model and trust assumptions: [`docs/SECURITY.md`](docs/SECURITY.md).

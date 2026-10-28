@@ -32,6 +32,7 @@ function MerchantDashboard() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const requestSeq = useRef(0);
+  const creating = useRef(false);
   async function refresh(m: Merchant | null = selected) {
     const seq = ++requestSeq.current;
     if (!m) return;
@@ -42,16 +43,16 @@ function MerchantDashboard() {
   }
   useEffect(() => { setOrders([]); void refresh(selected); }, [selected?.product.id]);
   async function create(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(""); setNotice("");
+    e.preventDefault(); if (creating.current) return; creating.current = true; setBusy(true); setError(""); setNotice("");
     try {
       const m = await checkoutApi<Merchant>("/products", { name, description, amount, to, delivery });
       saveMerchant(m); setItems(prev => [...prev.filter(x => x.product.id !== m.product.id), m]); setSelected(m);
       setNotice("Checkout created. Download your merchant backup before leaving this browser.");
-    } catch (e) { setError(message(e)); } finally { setBusy(false); }
+    } catch (e) { setError(message(e)); } finally { creating.current = false; setBusy(false); }
   }
   async function restore(file?: File) {
-    if (!file) return;
-    setError("");
+    if (!file || busy) return;
+    setBusy(true); setError("");
     try {
       if (file.size > 20000) throw Error("Invalid merchant backup.");
       const m = JSON.parse(await file.text()) as Merchant;
@@ -59,7 +60,7 @@ function MerchantDashboard() {
       await checkoutApi(`/products/${m.product.id}/orders`, undefined, m.token);
       m.product = await checkoutApi(`/products/${m.product.id}`);
       saveMerchant(m); setItems(prev => [...prev.filter(x => x.product.id !== m.product.id), m]); setSelected(m);
-    } catch (e) { setError(message(e)); }
+    } catch (e) { setError(message(e)); } finally { setBusy(false); }
   }
   const link = selected ? checkoutUrl(selected.product.id) : "";
   return <>
@@ -87,7 +88,7 @@ function MerchantDashboard() {
             <button className="text-button" onClick={() => downloadBlob(new Blob([JSON.stringify(selected, null, 2)], { type: "application/json" }), "umbra-merchant-backup.json")}>Download merchant backup</button>
             <p className="hint">Keep this backup private. It contains the access key for your order dashboard; it cannot spend your funds.</p>
           </>}
-          <label htmlFor="shop-restore">Restore merchant backup</label><input id="shop-restore" type="file" accept="application/json,.json" onChange={e => void restore(e.target.files?.[0])} />
+          <label htmlFor="shop-restore">Restore merchant backup</label><input id="shop-restore" type="file" disabled={busy} accept="application/json,.json" onChange={e => void restore(e.target.files?.[0])} />
         </section>
         <section className="card"><div className="card-title-row"><h2>Orders</h2><button disabled={busy || !selected} className="text-button" onClick={() => void refresh()}>Refresh</button></div>
           <div className="checkout-stats"><div><strong>{orders.filter(o => o.status === "paid").length}</strong><span>Verified payments</span></div><div><strong>{orders.filter(o => o.status !== "paid").length}</strong><span>Awaiting payment</span></div></div>
@@ -111,11 +112,22 @@ function Storefront({ id, wallet, onConnect }: { id: string; wallet: Wallet | nu
   const [submitted, setSubmitted] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [verifyError, setVerifyError] = useState("");
+  const paymentLock = useRef(false);
+  function acceptOrder(next: CheckoutOrder) {
+    if (next.productId !== id) throw Error("This order belongs to another storefront.");
+    setOrder(previous => previous?.id === next.id && previous.status === "paid" ? previous : next);
+    setVerifyError("");
+    if (next.status === "paid") setError("");
+  }
   useEffect(() => {
     let stop = false;
+    setError(""); setLoaded(false);
     (async () => {
       const p = await checkoutApi<CheckoutProduct>(`/products/${id}`);
       if (p.chainId !== Number(DEPLOYMENT.chainId) || p.pool.toLowerCase() !== MA?.address.toLowerCase() || !MA.assets.some(a => a.id === p.asset.id && a.symbol === "pUSD" && a.decimals === p.asset.decimals)) throw Error("This checkout uses a different network or pool.");
+      if (!/^umbra-addr-[a-f0-9]{64}-[a-f0-9]{64}$/i.test(p.to) || ethers.parseUnits(p.amount, p.asset.decimals) <= 0n) throw Error("Invalid checkout product.");
       if (!stop) setProduct(p);
       const orderId = new URLSearchParams(location.search).get("order");
       if (orderId) {
@@ -126,24 +138,25 @@ function Storefront({ id, wallet, onConnect }: { id: string; wallet: Wallet | nu
       if (!stop) setLoaded(true);
     })().catch(e => { if (!stop) setError(message(e)); });
     return () => { stop = true; };
-  }, [id]);
+  }, [id, loadVersion]);
   useEffect(() => {
     if (!order || order.status === "paid") return;
     let stop = false; let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { const o = await checkoutApi<CheckoutOrder>(`/orders/${order.id}/verify`, {}); if (!stop) setOrder(o); }
-      catch (e) { if (!stop) setError(message(e)); }
+      try { const o = await checkoutApi<CheckoutOrder>(`/orders/${order.id}/verify`, {}); if (!stop) acceptOrder(o); }
+      catch (e) { if (!stop) setVerifyError(message(e)); }
       finally { if (!stop) timer = setTimeout(poll, 20000); }
     };
-    timer = setTimeout(poll, 12000);
+    timer = setTimeout(poll, 1000);
     return () => { stop = true; clearTimeout(timer); };
   }, [order?.id, order?.status]);
   const amount = product ? ethers.parseUnits(product.amount, product.asset.decimals) : 0n;
   const asset = BigInt(product?.asset.id ?? 1);
-  const fee = relay.state === "ready" ? relay.quote.fees[Number(asset)] : null;
-  const canPrivate = !!pa.owner && fee !== null && pa.maSpendable(asset) >= amount + fee;
+  const fee = relay.state === "ready" ? (relay.quote.fees[Number(asset)] ?? null) : null;
+  const canPrivate = !!pa.owner && !pa.scanning && !pa.error && fee !== null && pa.maSpendable(asset) >= amount + fee;
   async function pay(source: "private" | "wallet") {
-    if (!product || !maClient || (source === "private" && !canPrivate)) return;
+    if (paymentLock.current || !loaded || attempted || !product || !maClient || (source === "private" && !canPrivate)) return;
+    paymentLock.current = true;
     setBusy(true); setError("");
     try {
       let o = order;
@@ -152,7 +165,7 @@ function Storefront({ id, wallet, onConnect }: { id: string; wallet: Wallet | nu
         setOrder(o); const url = new URL(location.href); url.searchParams.set("order", o.id); history.replaceState(null, "", url);
       }
       const existing = await checkoutApi<CheckoutOrder>(`/orders/${o.id}/verify`, {});
-      if (existing.status === "paid") { setOrder(existing); return; }
+      if (existing.status === "paid") { acceptOrder(existing); return; }
       const note = new Utxo({ keypair: Keypair.fromAddress(product.to), asset, amount, blinding: BigInt(o.blinding), memo: `checkout:${o.id}` });
       if (note.commitment().toString() !== o.commitment) throw Error("Checkout payment commitment does not match this order.");
       const ciphertext = ethers.getBytes(o.encryptedOutput);
@@ -167,23 +180,24 @@ function Storefront({ id, wallet, onConnect }: { id: string; wallet: Wallet | nu
         await submitMultiWithWallet(wallet, await proveMulti(bind(maClient.planDeposit(pa.owner ?? new Keypair(), asset, amount, product.to))), setStatus);
       }
       setSubmitted(true); setStatus("Payment submitted. Waiting for finalized verification…");
-      setOrder(await checkoutApi(`/orders/${o.id}/verify`, {})); void pa.refresh();
+      acceptOrder(await checkoutApi(`/orders/${o.id}/verify`, {})); void pa.refresh();
     } catch (e) { setError(message(e)); }
-    finally { setBusy(false); }
+    finally { paymentLock.current = false; setBusy(false); }
   }
-  async function verify() { if (!order) return; setBusy(true); setError(""); try { setOrder(await checkoutApi(`/orders/${order.id}/verify`, {})); } catch (e) { setError(message(e)); } finally { setBusy(false); } }
+  async function verify() { if (!order) return; setBusy(true); setError(""); try { acceptOrder(await checkoutApi(`/orders/${order.id}/verify`, {})); } catch (e) { setError(message(e)); } finally { setBusy(false); } }
   return <div className="grid checkout-grid">
     <section className="card checkout-storefront">
       <span className="toolbar-label">PRIVATE CHECKOUT · DIGITAL DOWNLOAD</span>
-      {!product ? <p role="status">{error || "Loading storefront…"}</p> : <>
+      {!product ? <p role="status">{error ? "Storefront unavailable" : "Loading storefront…"}</p> : <>
         <div className="checkout-cover" aria-hidden="true">U<span>DIGITAL EDITION</span></div>
         <h2>{product.name}</h2><p>{product.description}</p>
         <div className="checkout-price">{product.amount} <small>pUSD</small></div>
         <p className="hint">A text download, delivered after on-chain verification.</p>
         <div className={`checkout-order-state ${order?.status === "paid" ? "paid" : ""}`} role="status">{order?.status === "paid" ? "✓ Payment verified · Your download is ready" : submitted ? "Confirming payment" : "Awaiting payment"}</div>
         {order && <p className="hint mono">Order {order.id.slice(0, 8)}</p>}
-        {order?.status === "paid" ? <button className="primary" onClick={() => downloadOrder(order.id).catch(e => setError(message(e)))}>Download your purchase ↓</button> : <>
-          <p className="hint">Private balance: {fmt(pa.maBalances.get(asset) ?? 0n, product.asset.decimals, 4)} pUSD{fee !== null ? ` · Relayer fee: ${fmt(fee, product.asset.decimals, 4)} pUSD` : relay.state === "down" ? " · Relayer unavailable. Wallet payments remain available." : " · Checking relayer fee…"}</p>
+        {order?.status === "paid" ? <button className="primary" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await downloadOrder(order.id); } catch (e) { setError(message(e)); } finally { setBusy(false); } }}>Download your purchase ↓</button> : <>
+          <p className="hint">Private balance: {pa.scanning ? "Checking…" : pa.error ? "Unavailable — refresh your private account" : `${fmt(pa.maBalances.get(asset) ?? 0n, product.asset.decimals, 6)} pUSD`}</p>
+          <p className="hint">{fee !== null ? `Private payment total: ${ethers.formatUnits(amount + fee, product.asset.decimals)} pUSD (includes ${ethers.formatUnits(fee, product.asset.decimals)} pUSD relayer fee).` : relay.state === "down" ? "Relayer unavailable. Wallet payments remain available." : "Checking relayer fee…"} Wallet payments require network fees in tPOT.</p>
           <div className="checkout-pay-buttons"><button className="primary" disabled={!loaded || busy || !canPrivate || attempted} onClick={() => void pay("private")}>Pay from private balance</button>
           {wallet ? <button disabled={!loaded || busy || attempted} onClick={() => void pay("wallet")}>Pay from wallet</button> : <button onClick={onConnect} disabled={busy}>Connect wallet</button>}</div>
           {order && <button className="text-button" disabled={busy} onClick={() => void verify()}>Check payment status</button>}
@@ -194,6 +208,8 @@ function Storefront({ id, wallet, onConnect }: { id: string; wallet: Wallet | nu
         {status && order?.status !== "paid" && <div className="status info" role="status">{status}</div>}
       </>}
       {error && <div className="status err" role="alert">{error}</div>}
+      {verifyError && <div className="status err" role="alert">{verifyError} Your order is saved; verification will retry automatically.</div>}
+      {!loaded && error && <button onClick={() => setLoadVersion(v => v + 1)}>Retry loading checkout</button>}
     </section>
     <div className="checkout-column"><PrivateAccountCard compact /><div className="card"><h2>How delivery works</h2><ol className="checkout-steps"><li>Pay the exact price into the merchant’s private account.</li><li>Umbra checks the payment against finalized pool events.</li><li>Download your purchase or return using your order link.</li></ol><p className="hint">Payments use Portaldot testnet pUSD. The checkout operator hosts the product and verifies delivery eligibility.</p></div></div>
   </div>;

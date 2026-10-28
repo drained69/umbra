@@ -44,13 +44,13 @@ Use the existing relayer with `RELAYER_SEED`, the configured multi-asset pUSD po
 CHECKOUT_DATA_DIR=/data/checkout
 ```
 
-An empty variable leaves checkout disabled with a 503 response. The relayer Docker entrypoint grants the Node user access to the checkout subdirectory and then drops root privileges. The JSON store uses a same-directory temporary file and atomic rename with owner-only permissions. Back up `checkout.json` using the hosting provider's volume backup system; it contains private order data and product content. Multi-process or multi-replica operation requires replacing this store with a transactional database.
+An empty variable leaves checkout disabled with a 503 response. The relayer Docker entrypoint grants the Node user access to the checkout subdirectory and then drops root privileges. The JSON store uses a same-directory temporary file and atomic rename with owner-only permissions. New state is published in memory only after the write succeeds; a disk error never unlocks an unsaved order. Deployments must keep the same chain, pool and asset configuration for an existing store; use a separate data directory for another network. Back up `checkout.json` using the hosting provider's volume backup system; it contains private order data and product content. Multi-process or multi-replica operation requires replacing this store with a transactional database.
 
-Verification is incremental, scanning up to 2,000 finalized blocks per request, with one shared in-flight scan and a ten-second successful-scan cooldown. Customer polling or merchant refresh triggers scans. Very old abandoned orders can cause catch-up delays. Capacity is capped at 1,000 products and 10,000 orders. The relayer's existing request rate limit also applies. This is intended for a small testnet deployment, not a high-volume commerce service.
+Verification is incremental, scanning up to 2,000 finalized blocks per request, with one shared in-flight scan and a ten-second per-order cooldown. Customer polling scans that order; merchant refresh scans that merchant’s pending orders. An unrelated abandoned order cannot delay a new buyer’s verification. Old orders within a merchant dashboard can still require several refreshes to catch up. Chain reads time out after 20 seconds, release the scan lock and leave order state unchanged so the next request can retry. Capacity is capped at 1,000 products and 10,000 orders. Checkout has a separate token bucket allowing 60 requests and 10 product/order creations per minute per observed client IP, and returns HTTP 429 with `Retry-After: 60` when exhausted. It does not consume the transaction-relay bucket. A reverse proxy may cause clients to share an allowance; do not blindly trust arbitrary forwarded IP headers. JSON payloads have a 64 KiB ceiling to accommodate the documented Unicode text limit. This is intended for a small testnet deployment, not a high-volume commerce service.
 
 ## API
 
-All paths are under `/checkout`, have `Cache-Control: no-store`, and use the relayer's CORS and rate limits.
+All paths are under `/checkout`, have `Cache-Control: no-store`, and use the relayer’s CORS policy and a separate checkout rate limit.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -62,7 +62,9 @@ All paths are under `/checkout`, have `Cache-Control: no-store`, and use the rel
 | POST | `/orders/:id/verify` | Scan finalized events; request body is not evidence |
 | GET | `/orders/:id/download` | Return text attachment only for a verified paid order |
 
-## Tests
+## Review and tests
+
+See [the checkout audit report](CHECKOUT_AUDIT.md) for fixes, evidence and remaining constraints.
 
 ```sh
 cd relayer && npm run test:checkout
