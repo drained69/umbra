@@ -51,3 +51,7 @@ __pycache__/
 
 # local E2E deployment output
 deployments/local.json
+# Private merchant/order data and exported dashboard credentials
+checkout.json
+checkout.json.tmp
+umbra-merchant-backup*.json

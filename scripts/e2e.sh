@@ -27,6 +27,9 @@ echo "==> build + deploy (local)"
 echo "==> SDK end-to-end"
 (cd sdk && E2E_RPC="http://127.0.0.1:$PORT_RPC" npx --yes tsx@4.19.1 test/e2e.ts)
 
+echo "==> checkout verification and real-proof delivery"
+(cd relayer && npm run test:checkout && E2E_RPC="http://127.0.0.1:$PORT_RPC" npx tsx checkout.e2e.ts)
+
 echo "==> relayer smoke"
 (cd relayer && NETWORK=local RELAYER_FEE_SHIELDED=0.25 PRIVATE_KEY=$KEY1 PORTALDOT_RPC="http://127.0.0.1:$PORT_RPC" RELAYER_PORT=$PORT_RELAYER exec node index.js) &
 RELAYER_PID=$!

@@ -74,6 +74,12 @@ The live app is a demonstration, not a production privacy guarantee. Contract ad
 - The relayer acts as the counterparty and buys the asset on the exchange in the same atomic transaction. The trader's wallet never signs, and either the swap fills at the quoted amount or nothing happens.
 - Ordinary wallet-to-wallet swaps are also available.
 
+**Umbra Checkout**
+- Create a pUSD digital-product storefront with a payment link, QR code and embeddable link button.
+- Track orders in a merchant dashboard; download and restore merchant access backups.
+- Release a text download only after the server verifies the exact merchant-encrypted payment note in finalized pool events.
+- Includes a sample *Umbra Field Notes* product. Checkout discloses order details to the operator and requires persistent server storage. See [setup, verification and privacy details](docs/CHECKOUT.md).
+
 **Shielded pools and viewing keys**
 - Fixed-size pools (100 / 1,000 tPOT and pUSD) for simple deposit-and-withdraw privacy.
 - Read-only viewing keys let an accountant or auditor inspect your history without being able to spend.
@@ -251,6 +257,7 @@ Fund the relayer account with tPOT for fees and swap float, and with some pUSD t
 | Real costs | Deploy cost and per-operation storage deposits from live dry-runs | `make estimate`, `make measure` |
 | Proving keys ↔ verifiers | SHA-256 pinned in `sdk/artifacts/MANIFEST.json` | `node circuits/scripts/manifest.js --check` |
 | SDK and app | Typecheck and production build | `make check` |
+| Checkout | 8 adversarial and persistence tests; real-proof purchase, gated download and merchant spend on Anvil | `cd relayer && npm run test:checkout`, `make e2e` |
 
 These run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the live suites are informative rather than blocking.
 

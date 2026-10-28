@@ -5,7 +5,8 @@
   "private": true,
   "description": "Gasless withdrawal relayer for Umbra on Portaldot V3 (+ optional cross-VM attestation)",
   "scripts": {
-    "start": "tsx index.js"
+    "start": "tsx index.js",
+    "test:checkout": "tsx --test checkout.test.ts"
   },
   "dependencies": {
     "cors": "2.8.5",

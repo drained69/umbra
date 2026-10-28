@@ -34,8 +34,8 @@ export default function App() {
   // `?pay=` opens a friend's payment request; `?receipt=` verifies a public payment to you.
   const [payParam, setPayParam] = useState<string | null>(() => LINK.get("pay"));
   const [receiptParam, setReceiptParam] = useState<string | null>(() => LINK.get("receipt"));
-  const [tab, setTab] = useState<Tab>(() => (LINK.has("pay") || LINK.has("receipt") ? "pay" : "overview"));
-  const [paySub, setPaySub] = useState<PaySub>(() => (LINK.has("receipt") ? "requests" : "send"));
+  const [tab, setTab] = useState<Tab>(() => (LINK.has("pay") || LINK.has("receipt") || LINK.has("checkout") || LINK.has("merchant") ? "pay" : "overview"));
+  const [paySub, setPaySub] = useState<PaySub>(() => (LINK.has("receipt") ? "requests" : LINK.has("checkout") || LINK.has("merchant") ? "checkout" : "send"));
   const clearLink = () => {
     setPayParam(null);
     setReceiptParam(null);
@@ -184,10 +184,10 @@ export default function App() {
   const isPrivacyTab = (t: Tab) => privacyTools.some((p) => p.id === t);
   const openTab = (next: Tab) => { setTab(next); window.scrollTo({ top: 0, behavior: "instant" }); };
   const goTo = (next: "pay" | "swap", sub?: PaySub) => { if (sub) setPaySub(sub); openTab(next); };
-  const pageTitle = tab === "pay" && payParam ? "Pay a request" : isPrivacyTab(tab) ? privacyTools.find((p) => p.id === tab)!.label : navigation.find((n) => n.id === tab)?.label ?? "";
+  const pageTitle = tab === "pay" && paySub === "checkout" ? "Checkout" : tab === "pay" && payParam ? "Pay a request" : isPrivacyTab(tab) ? privacyTools.find((p) => p.id === tab)!.label : navigation.find((n) => n.id === tab)?.label ?? "";
   const pageDescription =
     tab === "wallet" ? "Your balances, ways to get paid, and the people you pay."
-    : tab === "pay" ? (payParam ? "Someone sent you a payment request." : "Pay anyone, request money, or split a bill.")
+    : tab === "pay" ? (paySub === "checkout" ? "Digital products. Private payments. Verified delivery." : payParam ? "Someone sent you a payment request." : "Pay anyone, request money, or split a bill.")
     : tab === "swap" ? "Trade tPOT and pUSD on Portaldot's built-in exchange."
     : tab === "transfer" ? "Add funds, pay private addresses, and withdraw with clear control over what each action reveals."
     : tab === "deposit" ? "Deposit a fixed amount into a shielded pool. Keep the note it creates: it is the only way to withdraw."
@@ -299,7 +299,7 @@ export default function App() {
               {isPrivacyTab(tab) && <nav className="privacy-nav" aria-label="Privacy tools">{privacyTools.map((p) => <button key={p.id} onClick={() => openTab(p.id)} aria-current={tab === p.id ? "page" : undefined}>{p.label}</button>)}</nav>}
               <div className="page-heading"><div><h1>{pageTitle}</h1><p>{pageDescription}</p></div></div>
               {["wallet", "pay", "swap"].includes(tab) ? (
-                !wallet && !(tab === "pay" && payParam) ? connectPrompt("Connect to see your balances, pay friends and swap.")
+                !wallet && !(tab === "pay" && (payParam || paySub === "checkout")) ? connectPrompt("Connect to see your balances, pay friends and swap.")
                 : <Suspense fallback={<div className="loading-panel" role="status">Loading…</div>}>
                   {tab === "wallet" && wallet && <WalletPanel wallet={wallet} onNavigate={goTo} />}
                   {tab === "pay" && <PayPanel wallet={wallet} sub={paySub} onSub={setPaySub} payParam={payParam} receiptParam={receiptParam} onConnect={pickNative} onClearLink={clearLink} />}
@@ -323,7 +323,7 @@ export default function App() {
           <footer className="workspace-footer">
             <span className="footer-brand"><img src="/umbra-mark.svg" width="22" height="22" alt="" /><span>umbra<span className="brand-period">.</span></span></span>
             <span>Private payments on Portaldot V3 testnet. Privacy grows as more people use Umbra.</span>
-            <span className="footer-links">{REPO_URL && <a href={REPO_URL} target="_blank" rel="noreferrer">Source code</a>}<a href={PORTALDOT_EXTENSION_URL} target="_blank" rel="noreferrer">Portaldot Extension</a></span>
+            <span className="footer-links"><a href="?merchant=1">Merchant checkout</a>{REPO_URL && <a href={REPO_URL} target="_blank" rel="noreferrer">Source code</a>}<a href={PORTALDOT_EXTENSION_URL} target="_blank" rel="noreferrer">Portaldot Extension</a></span>
           </footer>
         </main>
       </div>

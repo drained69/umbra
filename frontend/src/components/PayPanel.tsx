@@ -25,8 +25,9 @@ import CopyButton from "./CopyButton";
 import { PrivatePoolMeter } from "./PrivacyMeter";
 import RelayRoute from "./RelayRoute";
 import { privatelyPayable, usePrivateSpend } from "../lib/privatePay";
+import CheckoutPanel from "./CheckoutPanel";
 
-export type PaySub = "send" | "request" | "split" | "requests";
+export type PaySub = "send" | "request" | "split" | "requests" | "checkout";
 type Status = { t: "ok" | "err" | "info"; m: string; href?: string } | null;
 
 interface Props {
@@ -52,17 +53,19 @@ function StatusLine({ s }: { s: Status }) {
 /** Send, request, split a bill, and track requests; also the page a payment link opens. */
 export default function PayPanel({ wallet, sub, onSub, payParam, receiptParam, onConnect, onClearLink }: Props) {
   if (payParam) return <PayRequestView encoded={payParam} wallet={wallet} onConnect={onConnect} onDone={onClearLink} />;
-  if (!wallet) return null;
-  const tabs: [PaySub, string][] = [["send", "Send"], ["request", "Request"], ["split", "Split a bill"], ["requests", "My requests"]];
+  const checkoutId = new URLSearchParams(location.search).get("checkout");
+  if (checkoutId) return <CheckoutPanel productId={checkoutId} wallet={wallet} onConnect={onConnect} />;
+  const tabs: [PaySub, string][] = [["send", "Send"], ["request", "Request"], ["split", "Split a bill"], ["requests", "My requests"], ["checkout", "Checkout"]];
   return (
     <>
       <div className="denoms sub-tabs" role="group" aria-label="Payment actions">
         {tabs.map(([id, label]) => <button key={id} aria-pressed={sub === id} className={`chip ${sub === id ? "active" : ""}`} onClick={() => onSub(id)}>{label}</button>)}
       </div>
-      {sub === "send" && <SendForm wallet={wallet} />}
-      {sub === "request" && <RequestForm wallet={wallet} onShowRequests={() => onSub("requests")} />}
-      {sub === "split" && <SplitForm wallet={wallet} onShowRequests={() => onSub("requests")} />}
+      {sub === "send" && wallet && <SendForm wallet={wallet} />}
+      {sub === "request" && wallet && <RequestForm wallet={wallet} onShowRequests={() => onSub("requests")} />}
+      {sub === "split" && wallet && <SplitForm wallet={wallet} onShowRequests={() => onSub("requests")} />}
       {sub === "requests" && <RequestsList receiptParam={receiptParam} onClearLink={onClearLink} />}
+      {sub === "checkout" && <CheckoutPanel wallet={wallet} onConnect={onConnect} />}
     </>
   );
 }

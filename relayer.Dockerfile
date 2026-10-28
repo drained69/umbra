@@ -5,6 +5,7 @@
 #   PRIVATE_KEY   EVM account (fixed pools + single-asset private pool), optional
 #   NETWORK=testnet, RELAYER_CORS_ORIGIN=https://<app>, RELAYER_FEE_SHIELDED, ...
 FROM node:20-alpine
+RUN apk add --no-cache su-exec
 WORKDIR /app
 COPY sdk/package*.json sdk/
 RUN cd sdk && npm ci --omit=dev
@@ -13,9 +14,10 @@ RUN cd relayer && npm ci --omit=optional
 COPY sdk/src sdk/src
 COPY sdk/artifacts sdk/artifacts
 COPY deployments deployments
-COPY relayer/index.js relayer/native.ts relayer/crossvm.js relayer/
+COPY relayer/index.js relayer/native.ts relayer/crossvm.js relayer/checkout.ts relayer/
+COPY relayer/entrypoint.sh /app/relayer/entrypoint.sh
 ENV NODE_ENV=production RELAYER_PORT=8080
 EXPOSE 8080
-USER node
 WORKDIR /app/relayer
+ENTRYPOINT ["/bin/sh", "/app/relayer/entrypoint.sh"]
 CMD ["npx", "tsx", "index.js"]

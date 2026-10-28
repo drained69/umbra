@@ -170,6 +170,22 @@ app.use(express.json({ limit: "16kb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+// Durable checkout is opt-in: CHECKOUT_DATA_DIR must point to a persistent volume.
+if (process.env.CHECKOUT_DATA_DIR && native && MA_POOL) {
+  const { checkoutRouter } = await import("./checkout.ts");
+  const { ReviveProvider } = await import("../sdk/src/reviveProvider.ts");
+  const checkoutProvider = new ReviveProvider(async () => native.api, CHAIN_ID);
+  const checkoutAsset = MA.assets.find(a => a.symbol === "pUSD");
+  if (!checkoutAsset) throw new Error("Checkout requires pUSD in the multi-asset pool");
+  app.use("/checkout", rateLimit, checkoutRouter({
+    directory: process.env.CHECKOUT_DATA_DIR, chainId: CHAIN_ID, pool: MA_POOL, asset: checkoutAsset,
+    finalized: async () => (await native.api.rpc.chain.getHeader(await native.api.rpc.chain.getFinalizedHead())).number.toNumber(),
+    logs: (fromBlock, toBlock) => checkoutProvider.getLogs({ address: MA_POOL, fromBlock, toBlock }),
+  }));
+} else {
+  app.use("/checkout", (_req, res) => res.status(503).json({ error: "Checkout is not enabled on this server yet." }));
+}
+
 app.get("/status", async (_req, res) => {
   res.json({
     relayer: wallet?.address ?? null,
