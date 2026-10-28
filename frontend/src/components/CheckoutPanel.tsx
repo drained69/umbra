@@ -64,23 +64,28 @@ function MerchantDashboard() {
   }
   const link = selected ? checkoutUrl(selected.product.id) : "";
   return <>
-    <div className="checkout-intro"><span className="toolbar-label">UMBRA CHECKOUT</span><h2>Your shop. Private payments.</h2><p>Sell a digital download for pUSD. Share one link, receive funds in your private account, and track verified orders.</p></div>
+    <div className="checkout-intro"><span className="checkout-eyebrow"><span aria-hidden="true" /> UMBRA CHECKOUT</span><h2>Make a checkout.<br />Get paid privately.</h2><p>Create a storefront for your digital product, share it anywhere, and receive pUSD in your private account.</p><div className="checkout-intro-features"><span>01 &nbsp; Create your product</span><span>02 &nbsp; Share your link</span><span>03 &nbsp; Receive payment</span></div></div>
+    {error && <div className="status err checkout-feedback" role="alert">{error}</div>}{notice && <div className="status ok checkout-feedback" role="status">{notice}</div>}
     <div className="grid checkout-grid">
-      <form className="card" onSubmit={create}>
-        <div className="card-title-row"><h2>Create a checkout</h2><button type="button" className="text-button" onClick={() => { setName("Umbra Field Notes"); setDescription("A short guide to private payments. A sample digital product powered by Umbra Checkout."); setDelivery(SAMPLE); setAmount("1"); if (pa.owner) setTo(pa.owner.address()); }}>Use sample product</button></div>
+      <form className="card checkout-builder" onSubmit={create}>
+        <div className="checkout-card-heading"><div><span className="toolbar-label">NEW STOREFRONT</span><h2>Create a checkout</h2><p className="hint">Add the details your customers will see.</p></div><button type="button" className="text-button" onClick={() => { setName("Umbra Field Notes"); setDescription("A short guide to private payments. A sample digital product powered by Umbra Checkout."); setDelivery(SAMPLE); setAmount("1"); if (pa.owner) setTo(pa.owner.address()); }}>Use sample product</button></div>
+        <div className="checkout-section-heading"><span>01</span><div><strong>Product details</strong><small>What are you selling?</small></div></div>
         <label htmlFor="shop-name">Product name</label><input id="shop-name" required maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder="Your digital product" />
-        <label htmlFor="shop-description">Short description</label><textarea id="shop-description" maxLength={280} value={description} onChange={e => setDescription(e.target.value)} />
+        <label htmlFor="shop-description">Short description <span className="checkout-optional">Optional</span></label><textarea id="shop-description" maxLength={280} value={description} onChange={e => setDescription(e.target.value)} placeholder="Tell customers what they’ll receive" />
+        <div className="checkout-section-heading"><span>02</span><div><strong>Payment details</strong><small>Set your price and receiving address.</small></div></div>
         <label htmlFor="shop-price">Price in pUSD</label><input id="shop-price" required inputMode="decimal" pattern="[0-9]+(\.[0-9]{1,6})?" value={amount} onChange={e => setAmount(e.target.value)} />
         <label htmlFor="shop-to">Your private receiving address</label><textarea id="shop-to" required className="short mono" value={to} onChange={e => setTo(e.target.value)} placeholder="umbra-addr-…" />
         {pa.owner && <button type="button" className="text-button" onClick={() => setTo(pa.owner!.address())}>Use my private account</button>}
+        <div className="checkout-section-heading"><span>03</span><div><strong>Digital delivery</strong><small>Delivered after the payment is verified.</small></div></div>
         <label htmlFor="shop-delivery">Text download delivered after payment</label><textarea id="shop-delivery" required maxLength={6000} value={delivery} onChange={e => setDelivery(e.target.value)} placeholder="Your guide, template, or digital product (up to 6,000 characters)" />
-        <p className="hint">The checkout server stores this content and releases a .txt download after a finalized payment. Your private spending key stays with you.</p>
-        <button className="primary" disabled={busy || !MA}>Create checkout link</button>
+        <div className="checkout-input-meta"><span>Delivered as a .txt file</span><span>{delivery.length.toLocaleString()} / 6,000</span></div>
+        <p className="checkout-builder-note">Your product is stored by the checkout operator and released after a finalized payment. Your private spending key stays with you.</p>
+        <button className="primary" disabled={busy || !MA}>{busy ? "Working…" : "Create checkout link"}</button>
       </form>
       <div className="checkout-column">
         <section className="card">
-          <h2>My storefronts</h2>
-          {items.length ? <><label htmlFor="shop-select">Select a product</label><select id="shop-select" value={selected?.product.id ?? ""} onChange={e => setSelected(items.find(m => m.product.id === e.target.value)!)}>{items.map(m => <option key={m.product.id} value={m.product.id}>{m.product.name}</option>)}</select></> : <p className="hint">Your products and orders will appear here.</p>}
+          <span className="toolbar-label">YOUR BUSINESS</span><h2>My storefronts</h2>
+          {items.length ? <><label htmlFor="shop-select">Select a product</label><select id="shop-select" value={selected?.product.id ?? ""} onChange={e => setSelected(items.find(m => m.product.id === e.target.value)!)}>{items.map(m => <option key={m.product.id} value={m.product.id}>{m.product.name}</option>)}</select></> : <div className="checkout-empty"><span className="checkout-empty-icon" aria-hidden="true">↗</span><strong>Your storefronts live here</strong><p>Once you create a checkout, you can share your link and manage your products here.</p></div>}
           {selected && <>
             <p className="checkout-price">{selected.product.amount} <small>pUSD</small></p>
             <div className="row"><CopyButton value={link}>Copy checkout link</CopyButton><a className="button" href={link} target="_blank" rel="noreferrer">Open storefront ↗</a></div>
@@ -88,15 +93,14 @@ function MerchantDashboard() {
             <button className="text-button" onClick={() => downloadBlob(new Blob([JSON.stringify(selected, null, 2)], { type: "application/json" }), "umbra-merchant-backup.json")}>Download merchant backup</button>
             <p className="hint">Keep this backup private. It contains the access key for your order dashboard; it cannot spend your funds.</p>
           </>}
-          <label htmlFor="shop-restore">Restore merchant backup</label><input id="shop-restore" type="file" disabled={busy} accept="application/json,.json" onChange={e => void restore(e.target.files?.[0])} />
+          <details className="checkout-restore"><summary>Restore a merchant backup</summary><label htmlFor="shop-restore">Merchant backup file</label><input id="shop-restore" type="file" disabled={busy} accept="application/json,.json" onChange={e => { const file = e.target.files?.[0]; e.currentTarget.value = ""; void restore(file); }} /><p className="hint">Use the backup you downloaded when you created your checkout.</p></details>
         </section>
         <section className="card"><div className="card-title-row"><h2>Orders</h2><button disabled={busy || !selected} className="text-button" onClick={() => void refresh()}>Refresh</button></div>
           <div className="checkout-stats"><div><strong>{orders.filter(o => o.status === "paid").length}</strong><span>Verified payments</span></div><div><strong>{orders.filter(o => o.status !== "paid").length}</strong><span>Awaiting payment</span></div></div>
-          {!orders.length ? <p className="hint">No orders yet. Share your storefront to receive your first payment.</p> : <ul className="list checkout-orders">{[...orders].reverse().map(o => <li key={o.id}><span className="grow"><strong>Order {o.id.slice(0, 8)}</strong><small>{new Date(o.created).toLocaleString()}</small></span><span className={`tag ${o.status === "paid" ? "paid" : ""}`}>{o.status === "paid" ? "Verified paid" : "Awaiting"}</span></li>)}</ul>}
+          {busy && selected && !orders.length ? <p className="hint" role="status">Checking orders…</p> : !orders.length ? <p className="hint">No orders yet. Share your storefront to receive your first payment.</p> : <ul className="list checkout-orders">{[...orders].reverse().map(o => <li key={o.id}><span className="grow"><strong>Order {o.id.slice(0, 8)}</strong><small>{new Date(o.created).toLocaleString()}</small></span><span className={`tag ${o.status === "paid" ? "paid" : ""}`}>{o.status === "paid" ? "Verified paid" : "Awaiting"}</span></li>)}</ul>}
         </section>
       </div>
     </div>
-    {error && <div className="status err" role="alert">{error}</div>}{notice && <div className="status ok" role="status">{notice}</div>}
     {!pa.owner && <PrivateAccountCard compact />}
   </>;
 }
@@ -187,17 +191,16 @@ function Storefront({ id, wallet, onConnect }: { id: string; wallet: Wallet | nu
   async function verify() { if (!order) return; setBusy(true); setError(""); try { acceptOrder(await checkoutApi(`/orders/${order.id}/verify`, {})); } catch (e) { setError(message(e)); } finally { setBusy(false); } }
   return <div className="grid checkout-grid">
     <section className="card checkout-storefront">
-      <span className="toolbar-label">PRIVATE CHECKOUT · DIGITAL DOWNLOAD</span>
+      <div className="checkout-storefront-header"><span className="checkout-eyebrow"><span aria-hidden="true" /> UMBRA CHECKOUT</span><span className="checkout-type">Digital product</span></div>
       {!product ? <p role="status">{error ? "Storefront unavailable" : "Loading storefront…"}</p> : <>
-        <div className="checkout-cover" aria-hidden="true">U<span>DIGITAL EDITION</span></div>
+        <div className="checkout-cover" aria-hidden="true"><img src="/umbra-mark.svg" alt="" /><div><span>UMBRA</span><strong>Digital edition.</strong><small>PRIVATE CHECKOUT</small></div></div>
         <h2>{product.name}</h2><p>{product.description}</p>
-        <div className="checkout-price">{product.amount} <small>pUSD</small></div>
-        <p className="hint">A text download, delivered after on-chain verification.</p>
-        <div className={`checkout-order-state ${order?.status === "paid" ? "paid" : ""}`} role="status">{order?.status === "paid" ? "✓ Payment verified · Your download is ready" : submitted ? "Confirming payment" : "Awaiting payment"}</div>
+        <div className="checkout-price-row"><div><span className="toolbar-label">TOTAL PRICE</span><div className="checkout-price">{product.amount} <small>pUSD</small></div></div><span className="checkout-delivery-label">↓ &nbsp; Text download</span></div>
+        <div className={`checkout-order-state ${order?.status === "paid" ? "paid" : ""}`} role="status"><span className="checkout-state-dot" aria-hidden="true" />{order?.status === "paid" ? "Payment verified · Your download is ready" : submitted ? "Confirming payment" : order ? "Awaiting payment" : "Ready to pay"}</div>
         {order && <p className="hint mono">Order {order.id.slice(0, 8)}</p>}
         {order?.status === "paid" ? <button className="primary" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await downloadOrder(order.id); } catch (e) { setError(message(e)); } finally { setBusy(false); } }}>Download your purchase ↓</button> : <>
-          <p className="hint">Private balance: {pa.scanning ? "Checking…" : pa.error ? "Unavailable — refresh your private account" : `${fmt(pa.maBalances.get(asset) ?? 0n, product.asset.decimals, 6)} pUSD`}</p>
-          <p className="hint">{fee !== null ? `Private payment total: ${ethers.formatUnits(amount + fee, product.asset.decimals)} pUSD (includes ${ethers.formatUnits(fee, product.asset.decimals)} pUSD relayer fee).` : relay.state === "down" ? "Relayer unavailable. Wallet payments remain available." : "Checking relayer fee…"} Wallet payments require network fees in tPOT.</p>
+          <div className="checkout-payment-details"><div><span>Private balance</span><strong>{!pa.owner ? "Unlock account" : pa.scanning ? "Checking…" : pa.error ? "Unavailable" : `${fmt(pa.maBalances.get(asset) ?? 0n, product.asset.decimals, 6)} pUSD`}</strong></div><div><span>Relayer fee</span><strong>{fee !== null ? `${ethers.formatUnits(fee, product.asset.decimals)} pUSD` : relay.state === "down" ? "Unavailable" : "Checking…"}</strong></div>{fee !== null && <div className="checkout-payment-total"><span>Private payment total</span><strong>{ethers.formatUnits(amount + fee, product.asset.decimals)} pUSD</strong></div>}</div>
+          <p className="hint">{pa.error ? "Refresh your private account to check your balance. " : ""}{relay.state === "down" ? "Relayer unavailable. Wallet payments remain available. " : ""}Wallet payments require network fees in tPOT.</p>
           <div className="checkout-pay-buttons"><button className="primary" disabled={!loaded || busy || !canPrivate || attempted} onClick={() => void pay("private")}>Pay from private balance</button>
           {wallet ? <button disabled={!loaded || busy || attempted} onClick={() => void pay("wallet")}>Pay from wallet</button> : <button onClick={onConnect} disabled={busy}>Connect wallet</button>}</div>
           {order && <button className="text-button" disabled={busy} onClick={() => void verify()}>Check payment status</button>}
