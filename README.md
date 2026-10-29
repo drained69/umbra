@@ -14,7 +14,11 @@ The browser generates zero-knowledge proofs that Portaldot verifies on chain. By
 | **Network** | Portaldot V3 testnet (EVM chain ID `420420777`) |
 | **Status** | Testnet beta with valueless test assets; internally reviewed, not independently audited |
 
+### New: Umbra Checkout
 
+Umbra Checkout gives creators a way to sell a digital product and receive pUSD in their private account. Create a hosted storefront, share its link or QR code, and follow orders from a merchant dashboard. Customers can pay from a private balance or a connected wallet; the text download becomes available only after the server verifies the matching payment in finalized pool events.
+
+**Try it:** open [Umbra Checkout](https://umbrav1.up.railway.app/?merchant=1), choose **Use sample product**, enter your private receiving address, and create a storefront. Save both the merchant backup and your private-account spend key; they serve different purposes. See [the full checkout walkthrough](#umbra-checkout) for fees, recovery, privacy and current limitations.
 
 ---
 
